@@ -28,7 +28,7 @@ from pathlib import Path
 
 from playwright.sync_api import sync_playwright, TimeoutError as PWTimeout
 
-import selectors as sel
+import crm_selectors as sel
 from phone_utils import normalize_phone
 from state_db import is_already_notified, mark_notified
 from google_sheet import send_to_google_sheet
