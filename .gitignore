@@ -1,0 +1,22 @@
+# Секреты — никогда не коммитить
+config.txt
+
+# Python
+venv/
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+
+# Playwright / Chrome
+chrome_profile/
+
+# Данные (пересоздаются автоматически)
+state.sqlite
+output/
+error_screenshots/
+errors.csv
+
+# Временные файлы
+*.log
+*.tmp

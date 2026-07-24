@@ -1,0 +1,383 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Зикмес Mini CRM</title>
+<style>
+  *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+  body {
+    background: #1a1f2e;
+    color: #c8d0e7;
+    font-family: 'Segoe UI', Arial, sans-serif;
+    font-size: 14px;
+    min-height: 100vh;
+    padding: 16px;
+  }
+
+  header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    margin-bottom: 20px;
+    padding: 14px 20px;
+    background: #252b3d;
+    border: 1px solid #2d3550;
+    border-radius: 12px;
+  }
+  header h1 {
+    font-size: 18px;
+    font-weight: 700;
+    color: #e8eaf6;
+    display: flex;
+    align-items: center;
+    gap: 10px;
+  }
+  header h1::before { content: '⚡'; }
+
+  .badge {
+    padding: 5px 14px;
+    border-radius: 20px;
+    font-size: 12px;
+    font-weight: 600;
+    background: #0f1420;
+    color: #10b981;
+    border: 1px solid #10b981;
+    transition: all .2s;
+  }
+  .badge.running {
+    color: #f59e0b;
+    border-color: #f59e0b;
+    animation: pulse 1.5s infinite;
+  }
+  @keyframes pulse { 0%,100%{opacity:1} 50%{opacity:.6} }
+
+  .grid-2 {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 16px;
+    margin-bottom: 16px;
+  }
+  @media (max-width: 700px) { .grid-2 { grid-template-columns: 1fr; } }
+
+  .card {
+    background: #252b3d;
+    border: 1px solid #2d3550;
+    border-radius: 12px;
+    padding: 16px 18px;
+  }
+  .card h2 {
+    font-size: 13px;
+    font-weight: 700;
+    color: #8892b0;
+    text-transform: uppercase;
+    letter-spacing: .05em;
+    margin-bottom: 14px;
+  }
+
+  /* Buttons */
+  .btn {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    gap: 6px;
+    padding: 9px 14px;
+    border: none;
+    border-radius: 8px;
+    font-size: 13px;
+    font-weight: 600;
+    cursor: pointer;
+    transition: filter .15s, opacity .15s;
+    width: 100%;
+    margin-bottom: 8px;
+  }
+  .btn:last-child { margin-bottom: 0; }
+  .btn:hover:not(:disabled) { filter: brightness(1.12); }
+  .btn:disabled { opacity: .45; cursor: not-allowed; }
+  .btn-green  { background: #10b981; color: #fff; }
+  .btn-red    { background: #ef4444; color: #fff; }
+  .btn-purple { background: #6366f1; color: #fff; }
+  .btn-blue   { background: #4285f4; color: #fff; }
+  .btn-amber  { background: #f59e0b; color: #1a1f2e; }
+  .btn-gray   { background: #374151; color: #c8d0e7; }
+  .btn-sm     { padding: 5px 12px; font-size: 12px; width: auto; margin: 0; }
+
+  /* Date row */
+  .date-row {
+    display: flex;
+    gap: 8px;
+    align-items: center;
+    flex-wrap: wrap;
+    margin-bottom: 12px;
+  }
+  .date-row label {
+    font-size: 12px;
+    color: #8892b0;
+    white-space: nowrap;
+  }
+  .date-row input {
+    flex: 1;
+    min-width: 90px;
+    background: #0f1420;
+    border: 1px solid #2d3550;
+    border-radius: 6px;
+    color: #e8eaf6;
+    padding: 6px 10px;
+    font-size: 13px;
+    outline: none;
+  }
+  .date-row input:focus { border-color: #6366f1; }
+  .save-note { font-size: 11px; color: #6b7280; margin-top: -6px; margin-bottom: 10px; }
+
+  /* MTS buttons grid */
+  .mts-grid {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 8px;
+    margin-bottom: 10px;
+  }
+  .mts-grid .btn { margin: 0; }
+  .mts-full { margin-top: 0 !important; }
+
+  /* Merge row */
+  .merge-row {
+    display: flex;
+    gap: 8px;
+    margin-top: 10px;
+    padding-top: 10px;
+    border-top: 1px solid #2d3550;
+  }
+  .merge-row input {
+    flex: 1;
+    background: #0f1420;
+    border: 1px solid #2d3550;
+    border-radius: 6px;
+    color: #e8eaf6;
+    padding: 6px 10px;
+    font-size: 12px;
+    outline: none;
+  }
+  .merge-row input:focus { border-color: #f59e0b; }
+  .merge-row .btn { width: auto; margin: 0; flex-shrink: 0; }
+
+  /* Terminal */
+  .term-card { margin-bottom: 16px; }
+  .term-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 10px;
+  }
+  .term-header span { font-size: 13px; font-weight: 600; color: #8892b0; }
+  .term-header .actions { display: flex; gap: 8px; }
+  #terminal {
+    background: #0a0e1a;
+    border: 1px solid #1e2535;
+    border-radius: 8px;
+    padding: 12px 14px;
+    min-height: 180px;
+    max-height: 380px;
+    overflow-y: auto;
+    font-family: 'Consolas', 'Courier New', monospace;
+    font-size: 12px;
+    line-height: 1.7;
+    white-space: pre-wrap;
+    word-break: break-all;
+    color: #a0aec0;
+  }
+  #terminal .line-ok   { color: #10b981; }
+  #terminal .line-err  { color: #ef4444; }
+  #terminal .line-warn { color: #f59e0b; }
+  #terminal .line-info { color: #6366f1; }
+
+  /* Links */
+  .links-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
+    gap: 10px;
+  }
+  .link-btn {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 10px 14px;
+    background: #0f1420;
+    border: 1px solid #2d3550;
+    border-radius: 8px;
+    color: #c8d0e7;
+    text-decoration: none;
+    font-size: 13px;
+    transition: border-color .15s, color .15s;
+  }
+  .link-btn:hover { border-color: #6366f1; color: #e8eaf6; }
+
+  /* Scrollbar */
+  #terminal::-webkit-scrollbar { width: 6px; }
+  #terminal::-webkit-scrollbar-track { background: #0a0e1a; }
+  #terminal::-webkit-scrollbar-thumb { background: #2d3550; border-radius: 3px; }
+</style>
+</head>
+<body>
+
+<header>
+  <h1>Зикмес Mini CRM</h1>
+  <div class="badge" id="badge">Готов</div>
+</header>
+
+<div class="grid-2">
+
+  <!-- === ПАРСЕР ПРОСРОЧКИ === -->
+  <div class="card">
+    <h2>🔍 Парсер просрочки CRM</h2>
+    <div class="date-row">
+      <label>От:</label>
+      <input type="text" id="date-from" value="{{ cfg.get('ROUTE_DATE_FROM', '') }}" placeholder="01.07.2026">
+      <label>До:</label>
+      <input type="text" id="date-to" value="{{ cfg.get('ROUTE_DATE_TO', '') }}" placeholder="31.07.2026">
+      <button class="btn btn-gray btn-sm" onclick="saveConfig()">💾</button>
+    </div>
+    <p class="save-note">Нажми 💾 после изменения дат, чтобы сохранить в config.txt</p>
+    <button class="btn btn-green" id="btn-scan" onclick="runTask('/stream/scan', this)">
+      ▶ Запустить парсер
+    </button>
+  </div>
+
+  <!-- === ОБЗВОН МТС === -->
+  <div class="card">
+    <h2>📞 Обзвон МТС</h2>
+    <div class="mts-grid">
+      <button class="btn btn-purple" onclick="runTask('/stream/mts/debtors_export', this)">
+        1. Экспорт номеров
+      </button>
+      <button class="btn btn-blue" onclick="runTask('/stream/mts/call_debtors', this)">
+        2. Запустить обзвон
+      </button>
+      <button class="btn btn-blue" onclick="runTask('/stream/mts/fetch_debtors_report', this)">
+        3. Скачать отчёт МТС
+      </button>
+      <button class="btn btn-green mts-full" onclick="runTask('/stream/mts/debtors_full_cycle', this)">
+        ⚡ Полный цикл (1+2+3)
+      </button>
+    </div>
+    <div class="merge-row">
+      <input type="text" id="merge-file" placeholder="Имя отчёта МТС (report.csv)">
+      <button class="btn btn-amber" onclick="runMerge(this)">4. Отправить отчёт</button>
+    </div>
+  </div>
+
+</div>
+
+<!-- === ТЕРМИНАЛ === -->
+<div class="card term-card">
+  <div class="term-header">
+    <span>📟 Вывод процесса</span>
+    <div class="actions">
+      <button class="btn btn-red btn-sm" id="btn-stop" onclick="stopTask()" style="display:none">■ Стоп</button>
+      <button class="btn btn-gray btn-sm" onclick="clearTerm()">Очистить</button>
+    </div>
+  </div>
+  <div id="terminal">Готов к работе. Выбери действие выше.</div>
+</div>
+
+<!-- === БЫСТРЫЕ ССЫЛКИ === -->
+<div class="card">
+  <h2>🔗 Быстрые ссылки</h2>
+  <div class="links-grid">
+    <a class="link-btn" href="https://docs.google.com/spreadsheets/d/1rD1WChulpVdzwX6PZ1B4OI7PlmhfU3PqOl1iIbBM3WI" target="_blank">
+      📊 Рассрочка Зикмес
+    </a>
+    <a class="link-btn" href="https://docs.google.com/spreadsheets/d/1bBssA2PLmLSyuENlwO1Jzya9Z0b0PAV_CUNwWC1s3aI" target="_blank">
+      📋 Реестр должников
+    </a>
+    <a class="link-btn" href="https://a.ok-crm.com" target="_blank">
+      🖥️ CRM
+    </a>
+    <a class="link-btn" href="https://script.google.com/macros/s/AKfycbx2bknO3z1ZJ7U3z1qrD0-FQdwIljhaZdZ3fiUNKDXmFmtdeC10iQaoRr_-NAXxo8HH/exec?page=dashboard" target="_blank">
+      🧾 Зикмес Apps Script
+    </a>
+    <a class="link-btn" id="tm-link" href="#" target="_blank">
+      🔧 Tampermonkey скрипт
+    </a>
+  </div>
+</div>
+
+<script>
+  let source = null;
+  let busy = false;
+  const term = document.getElementById('terminal');
+
+  // Set Tampermonkey link to raw GitHub URL (update after pushing to GitHub)
+  const TM_RAW_URL = 'https://raw.githubusercontent.com/GITHUB_USER/GITHUB_REPO/main/tampermonkey/debtor_checker.user.js';
+  document.getElementById('tm-link').href = TM_RAW_URL;
+
+  function setBusy(val) {
+    busy = val;
+    document.querySelectorAll('.btn:not(.btn-sm):not(#btn-stop)').forEach(b => b.disabled = val);
+    document.getElementById('btn-stop').style.display = val ? 'inline-flex' : 'none';
+    const badge = document.getElementById('badge');
+    badge.textContent = val ? '⟳ Выполняется...' : '✓ Готов';
+    badge.className = 'badge' + (val ? ' running' : '');
+  }
+
+  function appendLine(text) {
+    if (term.textContent.startsWith('Готов')) term.textContent = '';
+    const line = document.createElement('span');
+    line.textContent = text + '\n';
+    if (text.startsWith('✓') || text.includes('Завершено успешно') || text.includes('OK')) line.className = 'line-ok';
+    else if (text.startsWith('✗') || text.includes('Ошибка') || text.includes('ERROR') || text.includes('ошибк')) line.className = 'line-err';
+    else if (text.startsWith('⚠') || text.includes('WARN') || text.includes('ЗАНЯТО')) line.className = 'line-warn';
+    else if (text.startsWith('▶') || text.startsWith('📋') || text.startsWith('📊')) line.className = 'line-info';
+    term.appendChild(line);
+    term.scrollTop = term.scrollHeight;
+  }
+
+  function clearTerm() {
+    term.innerHTML = '';
+  }
+
+  function runTask(url, _btn) {
+    if (busy) return;
+    clearTerm();
+    setBusy(true);
+    if (source) source.close();
+    source = new EventSource(url);
+    source.onmessage = e => {
+      if (e.data === '[END]') { source.close(); setBusy(false); return; }
+      appendLine(e.data);
+    };
+    source.onerror = () => {
+      appendLine('⚠ Соединение прервано');
+      source.close();
+      setBusy(false);
+    };
+  }
+
+  function runMerge(btn) {
+    const file = document.getElementById('merge-file').value.trim() || 'report.csv';
+    runTask('/stream/mts/debtors_merge?file=' + encodeURIComponent(file), btn);
+  }
+
+  function stopTask() {
+    fetch('/api/stop', { method: 'POST' })
+      .then(() => {
+        appendLine('■ Остановлено вручную');
+        if (source) source.close();
+        setBusy(false);
+      });
+  }
+
+  function saveConfig() {
+    const data = {
+      ROUTE_DATE_FROM: document.getElementById('date-from').value.trim(),
+      ROUTE_DATE_TO:   document.getElementById('date-to').value.trim(),
+    };
+    fetch('/api/config', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(data),
+    }).then(() => appendLine('✓ Даты сохранены в config.txt'));
+  }
+</script>
+</body>
+</html>
