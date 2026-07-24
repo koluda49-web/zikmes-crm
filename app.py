@@ -148,7 +148,9 @@ def stream_mts(action):
 
 
 if __name__ == '__main__':
+    import threading
     import webbrowser
     port = 5000
-    webbrowser.open(f'http://localhost:{port}')
+    # Открываем браузер через 2 сек — Flask успевает запуститься
+    threading.Timer(2.0, lambda: webbrowser.open(f'http://localhost:{port}')).start()
     app.run(host='127.0.0.1', port=port, threaded=True, debug=False)
