@@ -2,8 +2,8 @@
 // @name         Проверка должников рассрочки
 // @namespace    http://tampermonkey.net/
 // @version      4.2
-// @updateURL    https://raw.githubusercontent.com/GITHUB_USER/GITHUB_REPO/main/tampermonkey/debtor_checker.user.js
-// @downloadURL  https://raw.githubusercontent.com/GITHUB_USER/GITHUB_REPO/main/tampermonkey/debtor_checker.user.js
+// @updateURL    https://raw.githubusercontent.com/koluda49-web/zikmes-crm/main/tampermonkey/debtor_checker.user.js
+// @downloadURL  https://raw.githubusercontent.com/koluda49-web/zikmes-crm/main/tampermonkey/debtor_checker.user.js
 // @description  Проверяет просроченные платежи в CRM и обновляет статусы в Google Sheets
 // @author       You
 // @match        https://a.ok-crm.com/*
