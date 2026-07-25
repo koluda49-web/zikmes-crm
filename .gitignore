@@ -11,6 +11,11 @@ __pycache__/
 # Playwright / Chrome
 chrome_profile/
 
+# Netlify build artifacts (генерируются при сборке)
+netlify/functions/_packages/
+netlify/functions/flask_app.py
+netlify/functions/templates/
+
 # Данные (пересоздаются автоматически)
 state.sqlite
 output/

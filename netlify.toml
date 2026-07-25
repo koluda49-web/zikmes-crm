@@ -1,12 +1,12 @@
 [build]
   functions = "netlify/functions"
-  publish = "."
+  publish   = "."
+  command   = "pip install flask serverless-wsgi requests --target netlify/functions/_packages && cp app.py netlify/functions/flask_app.py && mkdir -p netlify/functions/templates && cp templates/dashboard.html netlify/functions/templates/"
 
 [build.environment]
   PYTHON_VERSION = "3.11"
 
-# Все запросы — через Flask-функцию
 [[redirects]]
-  from = "/*"
-  to = "/.netlify/functions/app"
+  from   = "/*"
+  to     = "/.netlify/functions/app"
   status = 200

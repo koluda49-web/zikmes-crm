@@ -1,11 +1,17 @@
 import sys
 import os
 
-# Добавляем корень проекта в путь поиска модулей
-sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..', '..'))
+# Добавляем установленные пакеты в путь
+_dir = os.path.dirname(os.path.abspath(__file__))
+_pkg = os.path.join(_dir, '_packages')
+if os.path.exists(_pkg):
+    sys.path.insert(0, _pkg)
+
+# Добавляем директорию функции в путь (там лежит flask_app.py)
+sys.path.insert(0, _dir)
 
 from serverless_wsgi import handle_request
-from app import app as flask_app
+from flask_app import app  # flask_app.py копируется из root app.py при сборке
 
 def handler(event, context):
-    return handle_request(flask_app, event, context)
+    return handle_request(app, event, context)
