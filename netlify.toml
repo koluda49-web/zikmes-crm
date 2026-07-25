@@ -1,0 +1,12 @@
+[build]
+  functions = "netlify/functions"
+  publish = "."
+
+[build.environment]
+  PYTHON_VERSION = "3.11"
+
+# Все запросы — через Flask-функцию
+[[redirects]]
+  from = "/*"
+  to = "/.netlify/functions/app"
+  status = 200
