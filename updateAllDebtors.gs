@@ -274,5 +274,7 @@ function updateAllDebtors() {
       skippedByTimeout.join(', ');
   }
 
-  SpreadsheetApp.getUi().alert(message);
+  // При вызове через google.script.run (web app) getUi() недоступен — возвращаем строку
+  try { SpreadsheetApp.getUi().alert(message); } catch (e) {}
+  return message;
 }

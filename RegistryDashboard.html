@@ -1,0 +1,67 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <meta http-equiv="Content-Type" content="text/html; charset=UTF-8">
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <title>Реестр должников</title>
+  <style>
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body { font-family: -apple-system, BlinkMacSystemFont, sans-serif;
+           background: #1a1a2e; color: #eee; padding: 32px 20px; min-height: 100vh; }
+    h1 { color: #a0c4ff; font-size: 20px; margin-bottom: 4px; }
+    .sub { color: #666; font-size: 13px; margin-bottom: 28px; }
+    .btn { display: block; width: 100%; padding: 16px; margin-bottom: 12px;
+           font-size: 15px; font-weight: 600; border: none; border-radius: 10px;
+           cursor: pointer; transition: opacity .15s; text-align: center; }
+    .btn:disabled { opacity: .4; cursor: default; }
+    .btn-blue { background: #3a86ff; color: #fff; }
+    #log { background: #0d1b2a; border-radius: 10px; padding: 16px;
+           font-family: monospace; font-size: 13px; color: #a8dadc;
+           white-space: pre-wrap; margin-top: 16px; min-height: 60px;
+           display: none; word-break: break-all; }
+  </style>
+</head>
+<body>
+  <h1>📋 Реестр должников</h1>
+  <div class="sub">Скрипты таблицы</div>
+
+  <button class="btn btn-blue" onclick="runScript()">
+    🔄 Обновить реестр (решённые + новые)
+  </button>
+
+  <div id="log"></div>
+
+  <script>
+    var busy = false;
+    var logEl = document.getElementById('log');
+
+    function setLog(html) {
+      logEl.style.display = 'block';
+      logEl.innerHTML = html;
+    }
+
+    function setBusy(b) {
+      busy = b;
+      document.querySelectorAll('.btn').forEach(function(btn) { btn.disabled = b; });
+    }
+
+    function runScript() {
+      if (busy) return;
+      setBusy(true);
+      setLog('▶ Обновление реестра... (может занять до 5 минут)');
+
+      google.script.run
+        .withSuccessHandler(function(msg) {
+          setLog('✓ ' + (msg || 'Готово'));
+          setBusy(false);
+        })
+        .withFailureHandler(function(err) {
+          setLog('✗ Ошибка: ' + (err ? err.message : 'неизвестно'));
+          setBusy(false);
+        })
+        .runUpdateRegistry();
+    }
+  </script>
+</body>
+</html>

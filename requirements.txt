@@ -2,3 +2,7 @@ flask
 playwright
 requests
 openpyxl
+selenium
+beautifulsoup4
+webdriver-manager
+pandas

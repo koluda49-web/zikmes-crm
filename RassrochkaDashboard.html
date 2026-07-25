@@ -1,0 +1,132 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <meta http-equiv="Content-Type" content="text/html; charset=UTF-8">
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <title>Рассрочка Зикмес</title>
+  <style>
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body { font-family: -apple-system, BlinkMacSystemFont, sans-serif;
+           background: #1a1a2e; color: #eee; padding: 32px 20px; min-height: 100vh; }
+    h1 { color: #a0c4ff; font-size: 20px; margin-bottom: 4px; }
+    .sub { color: #666; font-size: 13px; margin-bottom: 28px; }
+    .btn { display: block; width: 100%; padding: 16px; margin-bottom: 12px;
+           font-size: 15px; font-weight: 600; border: none; border-radius: 10px;
+           cursor: pointer; transition: opacity .15s; text-align: center; }
+    .btn:disabled { opacity: .4; cursor: default; }
+    .btn-blue  { background: #3a86ff; color: #fff; }
+    .btn-green { background: #2d9e5f; color: #fff; }
+    label { font-size: 13px; color: #888; display: block; margin-bottom: 6px; }
+    select {
+      width: 100%; padding: 11px 14px; margin-bottom: 12px;
+      background: #0d1b2a; border: 1px solid #2a3a55;
+      border-radius: 10px; color: #eee; font-size: 14px;
+      cursor: pointer; outline: none; appearance: none;
+      background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 12 12'%3E%3Cpath fill='%23888' d='M6 8L1 3h10z'/%3E%3C/svg%3E");
+      background-repeat: no-repeat; background-position: right 14px center;
+    }
+    select:disabled { opacity: .4; cursor: default; }
+    #log { background: #0d1b2a; border-radius: 10px; padding: 16px;
+           font-family: monospace; font-size: 13px; color: #a8dadc;
+           white-space: pre-wrap; margin-top: 16px; min-height: 60px;
+           display: none; word-break: break-all; }
+    a { color: #a0c4ff; }
+  </style>
+</head>
+<body>
+  <h1>📊 Рассрочка Зикмес</h1>
+  <div class="sub">Скрипты таблицы</div>
+
+  <button class="btn btn-blue" onclick="runScript('update')">
+    🔄 Обновить всех должников
+  </button>
+
+  <label>Лист для выгрузки в Excel:</label>
+  <select id="sheet-select" disabled>
+    <option value="">⟳ Загрузка листов…</option>
+  </select>
+
+  <button class="btn btn-green" onclick="runScript('export')">
+    📥 Выгрузить в Excel (отчёт по ЗП)
+  </button>
+
+  <div id="log"></div>
+
+  <script>
+    var busy = false;
+    var logEl = document.getElementById('log');
+    var sheetSel = document.getElementById('sheet-select');
+
+    // Загружаем список листов при открытии страницы
+    google.script.run
+      .withSuccessHandler(function(names) {
+        sheetSel.innerHTML = '';
+        names.forEach(function(name) {
+          var opt = document.createElement('option');
+          opt.value = name;
+          opt.textContent = name;
+          sheetSel.appendChild(opt);
+        });
+        sheetSel.disabled = false;
+      })
+      .withFailureHandler(function() {
+        sheetSel.innerHTML = '<option value="">Ошибка загрузки листов</option>';
+      })
+      .runGetSheetNames();
+
+    function setLog(html) {
+      logEl.style.display = 'block';
+      logEl.innerHTML = html;
+    }
+
+    function setBusy(b) {
+      busy = b;
+      document.querySelectorAll('.btn').forEach(function(btn) { btn.disabled = b; });
+      sheetSel.disabled = b;
+    }
+
+    function runScript(type) {
+      if (busy) return;
+      setBusy(true);
+      setLog('▶ Выполняется… (может занять до 5 минут)');
+
+      if (type === 'update') {
+        google.script.run
+          .withSuccessHandler(function(msg) {
+            setLog('✓ ' + (msg || 'Готово'));
+            setBusy(false);
+          })
+          .withFailureHandler(function(err) {
+            setLog('✗ Ошибка: ' + (err ? err.message : 'неизвестно'));
+            setBusy(false);
+          })
+          .runUpdateAllDebtors();
+      } else {
+        var sheetName = sheetSel.value;
+        if (!sheetName) {
+          setLog('✗ Выберите лист');
+          setBusy(false);
+          return;
+        }
+        setLog('▶ Выгрузка листа «' + sheetName + '»…');
+        google.script.run
+          .withSuccessHandler(function(res) {
+            if (res && res.ok) {
+              setLog('✓ Экспортировано строк: ' + res.rows +
+                '\n<a href="' + res.url + '" target="_blank">📎 Открыть файл Excel</a>');
+            } else {
+              setLog('✗ Ошибка: ' + (res ? res.error : 'неизвестно'));
+            }
+            setBusy(false);
+          })
+          .withFailureHandler(function(err) {
+            setLog('✗ Ошибка: ' + (err ? err.message : 'неизвестно'));
+            setBusy(false);
+          })
+          .runExportReport(sheetName);
+      }
+    }
+  </script>
+</body>
+</html>

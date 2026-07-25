@@ -61,6 +61,6 @@ echo Запускаю дашборд на http://localhost:5000
 echo Для остановки нажми Ctrl+C в этом окне.
 echo.
 
-python app.py
+venv\Scripts\python.exe app.py
 
 pause

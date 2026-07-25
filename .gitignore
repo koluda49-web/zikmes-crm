@@ -20,3 +20,7 @@ errors.csv
 # Временные файлы
 *.log
 *.tmp
+
+# OS
+.DS_Store
+Thumbs.db

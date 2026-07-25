@@ -1,0 +1,30 @@
+services:
+  - type: web
+    name: zikmes-crm
+    env: python
+    region: frankfurt
+    plan: free
+    buildCommand: pip install flask gunicorn requests
+    startCommand: gunicorn app:app --bind 0.0.0.0:$PORT --workers 1 --threads 4 --timeout 180
+    envVars:
+      - key: CRM_ORDERS_URL
+        value: https://a.ok-crm.com/order/index
+      - key: OVERDUE_DAYS
+        value: "7"
+      - key: PAID_STATUSES
+        value: "Погашен,Оплачен,Неактивный"
+      - key: ROUTE_DATE_DAYS_BACK
+        value: "300"
+      # Секреты — заполнить вручную в Render Dashboard после деплоя:
+      - key: GOOGLE_SHEET_WEBHOOK
+        sync: false
+      - key: DEBTOR_REGISTRY_WEBHOOK
+        sync: false
+      - key: DEBTOR_REGISTRY_SECRET
+        sync: false
+      - key: MTS_LOGIN
+        sync: false
+      - key: MTS_PASSWORD
+        sync: false
+      - key: SALARY_REPORT_SCRIPT_URL
+        sync: false

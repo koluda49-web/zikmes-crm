@@ -20,7 +20,7 @@
     display: flex;
     align-items: center;
     justify-content: space-between;
-    margin-bottom: 20px;
+    margin-bottom: 14px;
     padding: 14px 20px;
     background: #252b3d;
     border: 1px solid #2d3550;
@@ -44,6 +44,35 @@
   .badge.running { color: #f59e0b; border-color: #f59e0b; animation: pulse 1.5s infinite; }
   @keyframes pulse { 0%,100%{opacity:1} 50%{opacity:.6} }
 
+  /* ===== ВКЛАДКИ ===== */
+  .tabs-nav {
+    display: flex;
+    gap: 4px;
+    margin-bottom: 16px;
+    background: #252b3d;
+    border: 1px solid #2d3550;
+    border-radius: 12px;
+    padding: 6px;
+  }
+  .tab-btn {
+    flex: 1;
+    padding: 9px 16px;
+    border: none;
+    border-radius: 8px;
+    font-size: 13px;
+    font-weight: 600;
+    cursor: pointer;
+    background: transparent;
+    color: #8892b0;
+    transition: background .15s, color .15s;
+  }
+  .tab-btn:hover { background: #2d3550; color: #c8d0e7; }
+  .tab-btn.active { background: #6366f1; color: #fff; }
+
+  .tab-content { display: none; }
+  .tab-content.active { display: block; }
+
+  /* ===== СЕТКИ ===== */
   .grid-2 {
     display: grid;
     grid-template-columns: 1fr 1fr;
@@ -141,7 +170,6 @@
   }
   .merge-row .btn { width: auto; margin: 0; flex-shrink: 0; }
 
-  /* Кнопки таблиц */
   .sheets-grid {
     display: grid;
     grid-template-columns: repeat(auto-fill, minmax(220px, 1fr));
@@ -164,7 +192,6 @@
   .sheet-btn-sub   { font-size: 11px; color: #6b7280; }
   .sheet-btn.opens-tab .sheet-btn-sub::before { content: '↗ '; }
 
-  /* Терминал */
   .term-header {
     display: flex; justify-content: space-between; align-items: center;
     margin-bottom: 10px;
@@ -188,7 +215,6 @@
   #terminal .warn { color: #f59e0b; }
   #terminal .info { color: #6366f1; }
 
-  /* Ссылки */
   .links-grid {
     display: grid;
     grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
@@ -204,9 +230,68 @@
   }
   .link-btn:hover { border-color: #6366f1; color: #e8eaf6; }
 
+  #bot-terminal {
+    background: #0a0e1a;
+    border: 1px solid #1e2535;
+    border-radius: 8px;
+    padding: 12px 14px;
+    min-height: 180px; max-height: 380px;
+    overflow-y: auto;
+    font-family: 'Consolas', 'Courier New', monospace;
+    font-size: 12px; line-height: 1.7;
+    white-space: pre-wrap; word-break: break-all;
+    color: #a0aec0;
+  }
+  #bot-terminal .ok   { color: #10b981; }
+  #bot-terminal .err  { color: #ef4444; }
+  #bot-terminal .warn { color: #f59e0b; }
+  #bot-terminal .info { color: #6366f1; }
+  #bot-terminal::-webkit-scrollbar { width: 6px; }
+  #bot-terminal::-webkit-scrollbar-track { background: #0a0e1a; }
+  #bot-terminal::-webkit-scrollbar-thumb { background: #2d3550; border-radius: 3px; }
+
   #terminal::-webkit-scrollbar { width: 6px; }
   #terminal::-webkit-scrollbar-track { background: #0a0e1a; }
   #terminal::-webkit-scrollbar-thumb { background: #2d3550; border-radius: 3px; }
+
+  /* ===== РАСКРЫВАЮЩИЙСЯ СКРИПТ ===== */
+  .script-toggle-btn {
+    background: none;
+    border: 1px solid #2d3550;
+    border-radius: 10px;
+    padding: 12px 14px;
+    cursor: pointer;
+    text-align: left;
+    transition: border-color .15s;
+    width: 100%;
+  }
+  .script-toggle-btn:hover { border-color: #6366f1; }
+  .script-toggle-btn.open { border-color: #6366f1; background: #1a1f35; }
+
+  .script-panel {
+    display: none;
+    margin-top: 10px;
+    border: 1px solid #6366f1;
+    border-radius: 10px;
+    overflow: hidden;
+  }
+  .script-panel-bar {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 8px 12px;
+    background: #1a1f35;
+    border-bottom: 1px solid #2d3550;
+    font-size: 12px;
+    color: #8892b0;
+  }
+  .script-iframe {
+    width: 100%;
+    height: 380px;
+    border: none;
+    display: block;
+    background: #1a1a2e;
+  }
 </style>
 </head>
 <body>
@@ -216,147 +301,334 @@
   <div class="badge" id="badge">Готов</div>
 </header>
 
-<!-- ===== СТРОКА 1: СМС + ОБЗВОН ===== -->
-<div class="grid-2">
+<!-- ===== ВКЛАДКИ ===== -->
+<div class="tabs-nav">
+  <button class="tab-btn active" data-tab="debtors">👤 Должники</button>
+  <button class="tab-btn" data-tab="zp">💼 Отчёт по ЗП</button>
+  <button class="tab-btn" data-tab="rassrochki">📋 Рассрочки</button>
+  <button class="tab-btn" data-tab="links">🔗 Быстрые ссылки</button>
+</div>
 
-  <!-- СМС должникам -->
+<!-- ===== ВКЛАДКА 1: ДОЛЖНИКИ ===== -->
+<div class="tab-content active" id="tab-debtors">
+
+  <div class="grid-2">
+
+    <!-- СМС должникам -->
+    <div class="card">
+      <div class="card-title">📱 СМС рассылка должникам</div>
+      <div class="card-desc">Ищет просроченные платежи в CRM и формирует список телефонов для SMS-рассылки</div>
+      <div class="date-row">
+        <label>От:</label>
+        <input type="text" id="date-from" value="{{ cfg.get('ROUTE_DATE_FROM', '') }}" placeholder="01.07.2026">
+        <label>До:</label>
+        <input type="text" id="date-to" value="{{ cfg.get('ROUTE_DATE_TO', '') }}" placeholder="31.07.2026">
+        <button class="btn btn-gray btn-sm" onclick="saveConfig()">💾</button>
+      </div>
+      <p class="save-note">💾 — сохранить даты в config.txt</p>
+      <button class="btn btn-green" onclick="runTask('/stream/scan')">
+        ▶ Запустить поиск и отправить в таблицу
+      </button>
+      <a class="btn btn-gray" href="https://docs.google.com/spreadsheets/d/1QUaCguZ1VKOOa7-SUQLaXy_0yaRaxegqPDCjXyDwm_4/edit?gid=503165976#gid=503165976" target="_blank" style="margin-top:4px">
+        📋 Список СМС (лист «Уведомления»)
+      </a>
+    </div>
+
+    <!-- Голосовой обзвон -->
+    <div class="card">
+      <div class="card-title">📞 Голосовой обзвон должников (МТС)</div>
+      <div class="card-desc">Автоматические голосовые звонки через МТС VATS по списку должников из реестра</div>
+      <div class="mts-grid">
+        <button class="btn btn-purple" onclick="runTask('/stream/mts/debtors_export')">
+          1. Выгрузить номера
+        </button>
+        <button class="btn btn-blue" onclick="runTask('/stream/mts/call_debtors')">
+          2. Запустить обзвон
+        </button>
+        <button class="btn btn-blue" onclick="runTask('/stream/mts/fetch_debtors_report')">
+          3. Скачать отчёт
+        </button>
+        <button class="btn btn-green" onclick="runTask('/stream/mts/debtors_full_cycle')">
+          ⚡ Полный цикл (1+2+3)
+        </button>
+      </div>
+      <div class="merge-row">
+        <input type="text" id="merge-file" placeholder="Файл отчёта МТС (report.csv)">
+        <button class="btn btn-amber" onclick="runMerge()">4. Отправить отчёт</button>
+      </div>
+    </div>
+
+  </div>
+
+  <!-- Терминал -->
   <div class="card">
-    <div class="card-title">📱 СМС должникам</div>
-    <div class="card-desc">Ищет просроченные платежи в CRM и формирует список телефонов для SMS-рассылки</div>
-    <div class="date-row">
-      <label>От:</label>
-      <input type="text" id="date-from" value="{{ cfg.get('ROUTE_DATE_FROM', '') }}" placeholder="01.07.2026">
-      <label>До:</label>
-      <input type="text" id="date-to" value="{{ cfg.get('ROUTE_DATE_TO', '') }}" placeholder="31.07.2026">
-      <button class="btn btn-gray btn-sm" onclick="saveConfig()">💾</button>
+    <div class="term-header">
+      <span>📟 Вывод процесса</span>
+      <div class="actions">
+        <button class="btn btn-red btn-sm" id="btn-stop" onclick="stopTask()" style="display:none">■ Стоп</button>
+        <button class="btn btn-gray btn-sm" onclick="clearTerm()">Очистить</button>
+      </div>
     </div>
-    <p class="save-note">💾 — сохранить даты в config.txt</p>
-    <button class="btn btn-green" onclick="runTask('/stream/scan')">
-      ▶ Запустить поиск и отправить в таблицу
-    </button>
+    <div id="terminal">Готов к работе. Выбери действие выше.</div>
   </div>
 
-  <!-- Голосовой обзвон -->
+  <!-- Таблица Рассрочка Зикмес -->
   <div class="card">
-    <div class="card-title">📞 Голосовой обзвон должников (МТС)</div>
-    <div class="card-desc">Автоматические голосовые звонки через МТС VATS по списку должников из реестра</div>
-    <div class="mts-grid">
-      <button class="btn btn-purple" onclick="runTask('/stream/mts/debtors_export')">
-        1. Выгрузить номера
+    <div class="card-title">📊 Таблица «Рассрочка Зикмес»</div>
+    <div class="card-desc">Меню «Отчёт» → обновить должников, выгрузить ЗП</div>
+    <div class="sheets-grid">
+      <button class="sheet-btn script-toggle-btn" data-panel="panel-rassrochka-d" data-src="https://script.google.com/macros/s/AKfycbyvIK_VRIGrRJbP98nzmS3AwNhAafykWn6flsNLGih1RB8dIZCl1EWgc0MepQu1uRtC/exec" onclick="toggleScript(this)">
+        <span class="sheet-btn-title">🗒️ Скрипты</span>
+        <span class="sheet-btn-sub">▼ Развернуть</span>
       </button>
-      <button class="btn btn-blue" onclick="runTask('/stream/mts/call_debtors')">
-        2. Запустить обзвон
-      </button>
-      <button class="btn btn-blue" onclick="runTask('/stream/mts/fetch_debtors_report')">
-        3. Скачать отчёт
-      </button>
-      <button class="btn btn-green" onclick="runTask('/stream/mts/debtors_full_cycle')">
-        ⚡ Полный цикл (1+2+3)
-      </button>
+      <a class="sheet-btn opens-tab" href="https://docs.google.com/spreadsheets/d/1rD1WChulpVdzwX6PZ1B4OI7PlmhfU3PqOl1iIbBM3WI" target="_blank">
+        <span class="sheet-btn-title">📊 Открыть таблицу</span>
+        <span class="sheet-btn-sub">Рассрочка Зикмес</span>
+      </a>
     </div>
-    <div class="merge-row">
-      <input type="text" id="merge-file" placeholder="Файл отчёта МТС (report.csv)">
-      <button class="btn btn-amber" onclick="runMerge()">4. Отправить отчёт</button>
-    </div>
-  </div>
-
-</div>
-
-<!-- ===== ТЕРМИНАЛ ===== -->
-<div class="card">
-  <div class="term-header">
-    <span>📟 Вывод процесса</span>
-    <div class="actions">
-      <button class="btn btn-red btn-sm" id="btn-stop" onclick="stopTask()" style="display:none">■ Стоп</button>
-      <button class="btn btn-gray btn-sm" onclick="clearTerm()">Очистить</button>
+    <div class="script-panel" id="panel-rassrochka-d">
+      <div class="script-panel-bar">
+        <span>📋 Скрипты — Рассрочка Зикмес</span>
+        <button class="btn btn-gray btn-sm" onclick="collapseScript('panel-rassrochka-d')">▲ Свернуть</button>
+      </div>
+      <iframe class="script-iframe" id="frame-rassrochka-d"></iframe>
     </div>
   </div>
-  <div id="terminal">Готов к работе. Выбери действие выше.</div>
+
+  <!-- Реестр должников -->
+  <div class="card">
+    <div class="card-title">📋 Реестр должников (Обзвон должников)</div>
+    <div class="card-desc">Меню «Реестр должников» → обновить, перенести в архив, управление обзвоном</div>
+    <div class="sheets-grid">
+      <button class="sheet-btn script-toggle-btn" data-panel="panel-reestr" data-src="https://script.google.com/macros/s/AKfycbwhoZFvPVQNTpkfIcfYwObKyryYC_aNU61exnn1sN1gc283KNOkTOpHCCTbk2wKiDilRw/exec" onclick="toggleScript(this)">
+        <span class="sheet-btn-title">🗒️ Скрипты</span>
+        <span class="sheet-btn-sub">▼ Развернуть</span>
+      </button>
+      <a class="sheet-btn opens-tab" href="https://docs.google.com/spreadsheets/d/1bBssA2PLmLSyuENlwO1Jzya9Z0b0PAV_CUNwWC1s3aI" target="_blank">
+        <span class="sheet-btn-title">📋 Открыть таблицу</span>
+        <span class="sheet-btn-sub">Реестр должников</span>
+      </a>
+    </div>
+    <div class="script-panel" id="panel-reestr">
+      <div class="script-panel-bar">
+        <span>📋 Скрипты — Реестр должников</span>
+        <button class="btn btn-gray btn-sm" onclick="collapseScript('panel-reestr')">▲ Свернуть</button>
+      </div>
+      <iframe class="script-iframe" id="frame-reestr"></iframe>
+    </div>
+  </div>
+
 </div>
 
-<!-- ===== ТАБЛИЦА: РАССРОЧКА ЗИКМЕС ===== -->
-<div class="card">
-  <div class="card-title">📊 Таблица «Рассрочка Зикмес»</div>
-  <div class="card-desc">Меню «Отчёт» открывается в таблице после перехода по ссылке</div>
-  <div class="sheets-grid">
+<!-- ===== ВКЛАДКА 2: ОТЧЁТ ПО ЗП ===== -->
+<div class="tab-content" id="tab-zp">
 
-    <a class="sheet-btn opens-tab" href="https://docs.google.com/spreadsheets/d/1rD1WChulpVdzwX6PZ1B4OI7PlmhfU3PqOl1iIbBM3WI" target="_blank">
-      <span class="sheet-btn-title">🔄 Обновить лист «Все должники»</span>
-      <span class="sheet-btn-sub">Меню «Отчёт» → «Обновить всех должников»</span>
-    </a>
-
-    <a class="sheet-btn opens-tab" href="https://docs.google.com/spreadsheets/d/1rD1WChulpVdzwX6PZ1B4OI7PlmhfU3PqOl1iIbBM3WI" target="_blank">
-      <span class="sheet-btn-title">📥 Выгрузка в отчёт по ЗП</span>
-      <span class="sheet-btn-sub">Меню «Отчёт» → «Выгрузить в Excel»</span>
-    </a>
-
+  <!-- Таблица Рассрочка Зикмес -->
+  <div class="card">
+    <div class="card-title">📊 Таблица «Рассрочка Зикмес»</div>
+    <div class="card-desc">Меню «Отчёт» → обновить должников, выгрузить ЗП</div>
+    <div class="sheets-grid">
+      <button class="sheet-btn script-toggle-btn" data-panel="panel-rassrochka-z" data-src="https://script.google.com/macros/s/AKfycbyvIK_VRIGrRJbP98nzmS3AwNhAafykWn6flsNLGih1RB8dIZCl1EWgc0MepQu1uRtC/exec" onclick="toggleScript(this)">
+        <span class="sheet-btn-title">🗒️ Скрипты</span>
+        <span class="sheet-btn-sub">▼ Развернуть</span>
+      </button>
+      <a class="sheet-btn opens-tab" href="https://docs.google.com/spreadsheets/d/1rD1WChulpVdzwX6PZ1B4OI7PlmhfU3PqOl1iIbBM3WI" target="_blank">
+        <span class="sheet-btn-title">📊 Открыть таблицу</span>
+        <span class="sheet-btn-sub">Рассрочка Зикмес</span>
+      </a>
+    </div>
+    <div class="script-panel" id="panel-rassrochka-z">
+      <div class="script-panel-bar">
+        <span>📋 Скрипты — Рассрочка Зикмес</span>
+        <button class="btn btn-gray btn-sm" onclick="collapseScript('panel-rassrochka-z')">▲ Свернуть</button>
+      </div>
+      <iframe class="script-iframe" id="frame-rassrochka-z"></iframe>
+    </div>
   </div>
+
+  <!-- Таблица Оплаты Зикмес -->
+  <div class="card">
+    <div class="card-title">💰 Таблица «Оплаты Зикмес»</div>
+    <div class="card-desc">Импорт выписки и закрытие рассрочек через Apps Script</div>
+    <div class="sheets-grid">
+      <button class="sheet-btn script-toggle-btn" data-panel="panel-oplaty" data-src="https://script.google.com/macros/s/AKfycbx2bknO3z1ZJ7U3z1qrD0-FQdwIljhaZdZ3fiUNKDXmFmtdeC10iQaoRr_-NAXxo8HH/exec?page=dashboard" onclick="toggleScript(this)">
+        <span class="sheet-btn-title">🧾 Скрипты</span>
+        <span class="sheet-btn-sub">▼ Развернуть</span>
+      </button>
+      <a class="sheet-btn opens-tab" href="https://docs.google.com/spreadsheets/d/1jHugmhMg-gzQMxTZiBTIbtbiWQB9Qv-6UUdUiG_p6UY" target="_blank">
+        <span class="sheet-btn-title">💰 Открыть таблицу</span>
+        <span class="sheet-btn-sub">Оплаты Зикмес</span>
+      </a>
+    </div>
+    <div class="script-panel" id="panel-oplaty">
+      <div class="script-panel-bar">
+        <span>🧾 Скрипты — Оплаты Зикмес</span>
+        <button class="btn btn-gray btn-sm" onclick="collapseScript('panel-oplaty')">▲ Свернуть</button>
+      </div>
+      <iframe class="script-iframe" id="frame-oplaty"></iframe>
+    </div>
+  </div>
+
+  <!-- Таблица Телефоны Зикмес -->
+  <div class="card">
+    <div class="card-title">📱 Таблица «Телефоны Зикмес» — Загрузка ЗП отчётов</div>
+    <div class="card-desc">Загрузка PDF-отчётов МТС и A1 (Велком) в таблицу телефонов</div>
+    <div class="sheets-grid">
+      <button class="sheet-btn script-toggle-btn" data-panel="panel-telefony-mts" data-src="https://script.google.com/macros/s/AKfycbypFN7yQE462s3EAek8GmUd3CtFWgeByNqfd6-4XgcP3wGmpBsEWhJB-5dvyUhVLfZKFg/exec?mode=mts" onclick="toggleScript(this)">
+        <span class="sheet-btn-title">📱 Загрузка в ЗП отчёта МТС</span>
+        <span class="sheet-btn-sub">▼ Развернуть</span>
+      </button>
+      <button class="sheet-btn script-toggle-btn" data-panel="panel-telefony-a1" data-src="https://script.google.com/macros/s/AKfycbypFN7yQE462s3EAek8GmUd3CtFWgeByNqfd6-4XgcP3wGmpBsEWhJB-5dvyUhVLfZKFg/exec?mode=a1" onclick="toggleScript(this)">
+        <span class="sheet-btn-title">📱 Загрузка в ЗП отчёта A1</span>
+        <span class="sheet-btn-sub">▼ Развернуть</span>
+      </button>
+      <a class="sheet-btn opens-tab" href="https://docs.google.com/spreadsheets/d/1S2IcJsO9uOgxxNu-lGDBjsnJyr_Ko13XC1udxDXjaso/edit" target="_blank">
+        <span class="sheet-btn-title">📊 Открыть таблицу</span>
+        <span class="sheet-btn-sub">Телефоны Зикмес</span>
+      </a>
+    </div>
+    <div class="script-panel" id="panel-telefony-mts">
+      <div class="script-panel-bar">
+        <span>📱 Загрузка ЗП МТС — Телефоны Зикмес</span>
+        <button class="btn btn-gray btn-sm" onclick="collapseScript('panel-telefony-mts')">▲ Свернуть</button>
+      </div>
+      <iframe class="script-iframe" id="frame-telefony-mts"></iframe>
+    </div>
+    <div class="script-panel" id="panel-telefony-a1">
+      <div class="script-panel-bar">
+        <span>📱 Загрузка ЗП A1 — Телефоны Зикмес</span>
+        <button class="btn btn-gray btn-sm" onclick="collapseScript('panel-telefony-a1')">▲ Свернуть</button>
+      </div>
+      <iframe class="script-iframe" id="frame-telefony-a1"></iframe>
+    </div>
+  </div>
+
 </div>
 
-<!-- ===== ТАБЛИЦА: ОПЛАТЫ ЗИКМЕС (APPS SCRIPT) ===== -->
-<div class="card">
-  <div class="card-title">💰 Таблица «Оплаты Зикмес»</div>
-  <div class="card-desc">Открываются готовые страницы Apps Script в новой вкладке</div>
-  <div class="sheets-grid">
+<!-- ===== ВКЛАДКА 3: РАССРОЧКИ ===== -->
+<div class="tab-content" id="tab-rassrochki">
 
-    <a class="sheet-btn opens-tab" href="https://script.google.com/macros/s/AKfycbx2bknO3z1ZJ7U3z1qrD0-FQdwIljhaZdZ3fiUNKDXmFmtdeC10iQaoRr_-NAXxo8HH/exec?page=import" target="_blank">
-      <span class="sheet-btn-title">📄 Импорт выписки банка</span>
-      <span class="sheet-btn-sub">Загрузить HTML-выписку Беларусбанка → разнести платежи</span>
-    </a>
+  <div class="grid-2">
 
-    <a class="sheet-btn opens-tab" href="https://script.google.com/macros/s/AKfycbx2bknO3z1ZJ7U3z1qrD0-FQdwIljhaZdZ3fiUNKDXmFmtdeC10iQaoRr_-NAXxo8HH/exec?page=erip" target="_blank">
-      <span class="sheet-btn-title">✅ Закрыть рассрочку по ЕРИП</span>
-      <span class="sheet-btn-sub">Отметить платежи оплаченными по ЕРИП</span>
-    </a>
+    <!-- Бот оформления рассрочек -->
+    <div class="card">
+      <div class="card-title">🤖 Бот оформления рассрочек (okcrm_bot)</div>
+      <div class="card-desc">Обходит замороженные заказы (банк «Фирма рассрочка», р/с): вписывает взнос, генерирует платежи и документы, загружает на Google Drive, меняет статус на «Новый»</div>
+      <button class="btn btn-green" onclick="runBotTask('/stream/bot/run')">
+        ▶ Запустить бота (полный прогон)
+      </button>
+      <button class="btn btn-amber" onclick="runBotTask('/stream/bot/dry_run')" style="margin-top:6px">
+        🔍 Пробный прогон (dry-run, без изменений)
+      </button>
+      <div class="merge-row" style="margin-top:10px">
+        <input type="text" id="bot-order-id" placeholder="ID заказа (напр. 597627)">
+        <button class="btn btn-blue" onclick="runBotOrder(false)">→ Запустить</button>
+        <button class="btn btn-gray" onclick="runBotOrder(true)" title="--force: игнорировать state.sqlite">↺ Force</button>
+      </div>
+    </div>
 
-    <a class="sheet-btn opens-tab" href="https://script.google.com/macros/s/AKfycbx2bknO3z1ZJ7U3z1qrD0-FQdwIljhaZdZ3fiUNKDXmFmtdeC10iQaoRr_-NAXxo8HH/exec?page=manualrs" target="_blank">
-      <span class="sheet-btn-title">✅ Закрыть рассрочку (р/с)</span>
-      <span class="sheet-btn-sub">Отметить платежи оплаченными по расч. счёту</span>
-    </a>
+    <!-- Сессия Google -->
+    <div class="card">
+      <div class="card-title">🔑 Сессия Google Drive</div>
+      <div class="card-desc">Сессия периодически протухает. Перед захватом вручную открой Chrome с флагом <code style="background:#0f1420;padding:1px 5px;border-radius:4px;font-size:11px">--remote-debugging-port=9222</code> и войди на CRM и Google Drive.</div>
+      <button class="btn btn-purple" onclick="runBotTask('/stream/bot/session')">
+        🔑 Захватить сессию (grab_session_from_cdp.py)
+      </button>
+
+      <!-- Ссылки -->
+      <div style="margin-top:14px; border-top:1px solid #2d3550; padding-top:12px;">
+        <a class="sheet-btn opens-tab" href="https://a.ok-crm.com/order/index?OrderSearch%5Bid%5D=&OrderSearch%5BproductLinks%5D=&OrderSearch%5Binfo_payment_method%5D=7&OrderSearch%5Bbank%5D=1&OrderSearch%5Bcreated_at%5D=&OrderSearch%5BrouteDate%5D=&OrderSearch%5Bdelivery_method%5D=&OrderSearch%5Bstock_id%5D=&OrderSearch%5Bstatus%5D=&OrderSearch%5Bstatus%5D%5B%5D=14&OrderSearch%5Bdealer_id%5D=&OrderSearch%5BtagValuesArr%5D=&OrderSearch%5Bclient_phones%5D=&OrderSearch%5Bdelivery_address%5D=&OrderSearch%5Bcomment%5D=" target="_blank" style="margin-bottom:8px">
+          <span class="sheet-btn-title">📋 Рассрочки в CRM</span>
+          <span class="sheet-btn-sub">Замороженные заказы (р/с, Фирма рассрочка)</span>
+        </a>
+        <a class="sheet-btn opens-tab" href="https://drive.google.com/drive/folders/1ogcJIQiZJxK9yh3mjZ7mdwVDea9DKn49" target="_blank">
+          <span class="sheet-btn-title">📁 2026 Рассрочки (Drive)</span>
+          <span class="sheet-btn-sub">Папка с документами на Google Drive</span>
+        </a>
+      </div>
+    </div>
 
   </div>
+
+  <!-- Терминал бота -->
+  <div class="card">
+    <div class="term-header">
+      <span>📟 Вывод процесса</span>
+      <div class="actions">
+        <button class="btn btn-red btn-sm" id="bot-btn-stop" onclick="stopBotTask()" style="display:none">■ Стоп</button>
+        <button class="btn btn-gray btn-sm" onclick="clearBotTerm()">Очистить</button>
+      </div>
+    </div>
+    <div id="bot-terminal">Готов к работе. Выбери действие выше.</div>
+  </div>
+
 </div>
 
-<!-- ===== ТАБЛИЦА: РЕЕСТР ДОЛЖНИКОВ ===== -->
-<div class="card">
-  <div class="card-title">📋 Таблица «Реестр должников»</div>
-  <div class="card-desc">Меню «Реестр должников» открывается в таблице после перехода по ссылке</div>
-  <div class="sheets-grid">
+<!-- ===== ВКЛАДКА 4: БЫСТРЫЕ ССЫЛКИ ===== -->
+<div class="tab-content" id="tab-links">
 
-    <a class="sheet-btn opens-tab" href="https://docs.google.com/spreadsheets/d/1bBssA2PLmLSyuENlwO1Jzya9Z0b0PAV_CUNwWC1s3aI" target="_blank">
-      <span class="sheet-btn-title">🔄 Обновить реестр должников</span>
-      <span class="sheet-btn-sub">Меню «Реестр должников» → «Обновить реестр»</span>
-    </a>
-
-    <a class="sheet-btn opens-tab" href="https://docs.google.com/spreadsheets/d/1bBssA2PLmLSyuENlwO1Jzya9Z0b0PAV_CUNwWC1s3aI" target="_blank">
-      <span class="sheet-btn-title">📦 Перенести обзвон в архив</span>
-      <span class="sheet-btn-sub">Меню «Реестр должников» → «Перенести в архив»</span>
-    </a>
-
+  <div class="card">
+    <div class="card-title">🔗 Быстрые ссылки</div>
+    <div class="links-grid">
+      <a class="link-btn" href="https://docs.google.com/spreadsheets/d/1rD1WChulpVdzwX6PZ1B4OI7PlmhfU3PqOl1iIbBM3WI" target="_blank">📊 Рассрочка Зикмес</a>
+      <a class="link-btn" href="https://docs.google.com/spreadsheets/d/1bBssA2PLmLSyuENlwO1Jzya9Z0b0PAV_CUNwWC1s3aI" target="_blank">📋 Реестр должников</a>
+      <a class="link-btn" href="https://docs.google.com/spreadsheets/d/1jHugmhMg-gzQMxTZiBTIbtbiWQB9Qv-6UUdUiG_p6UY" target="_blank">💰 Оплаты Зикмес</a>
+      <a class="link-btn" href="https://docs.google.com/spreadsheets/d/1S2IcJsO9uOgxxNu-lGDBjsnJyr_Ko13XC1udxDXjaso/edit" target="_blank">📱 Телефоны Зикмес</a>
+      <a class="link-btn" href="https://a.ok-crm.com" target="_blank">🖥️ CRM</a>
+      <a class="link-btn" href="https://raw.githubusercontent.com/koluda49-web/zikmes-crm/main/tampermonkey/debtor_checker.user.js" target="_blank">🔧 Установить Tampermonkey-скрипт</a>
+      <a class="link-btn" href="https://script.google.com/macros/s/AKfycbx2bknO3z1ZJ7U3z1qrD0-FQdwIljhaZdZ3fiUNKDXmFmtdeC10iQaoRr_-NAXxo8HH/exec?page=dashboard" target="_blank">🧾 Панель Зикмес (Apps Script)</a>
+    </div>
   </div>
-</div>
 
-<!-- ===== БЫСТРЫЕ ССЫЛКИ ===== -->
-<div class="card">
-  <div class="card-title">🔗 Быстрые ссылки</div>
-  <div class="links-grid">
-    <a class="link-btn" href="https://docs.google.com/spreadsheets/d/1rD1WChulpVdzwX6PZ1B4OI7PlmhfU3PqOl1iIbBM3WI" target="_blank">📊 Рассрочка Зикмес</a>
-    <a class="link-btn" href="https://docs.google.com/spreadsheets/d/1bBssA2PLmLSyuENlwO1Jzya9Z0b0PAV_CUNwWC1s3aI" target="_blank">📋 Реестр должников</a>
-    <a class="link-btn" href="https://docs.google.com/spreadsheets/d/1jHugmhMg-gzQMxTZiBTIbtbiWQB9Qv-6UUdUiG_p6UY" target="_blank">💰 Оплаты Зикмес</a>
-    <a class="link-btn" href="https://a.ok-crm.com" target="_blank">🖥️ CRM</a>
-    <a class="link-btn" href="https://raw.githubusercontent.com/koluda49-web/zikmes-crm/main/tampermonkey/debtor_checker.user.js" target="_blank">🔧 Установить Tampermonkey-скрипт</a>
-    <a class="link-btn" href="https://script.google.com/macros/s/AKfycbx2bknO3z1ZJ7U3z1qrD0-FQdwIljhaZdZ3fiUNKDXmFmtdeC10iQaoRr_-NAXxo8HH/exec?page=dashboard" target="_blank">🧾 Панель Зикмес (Apps Script)</a>
-  </div>
 </div>
 
 <script>
+  // ===== СКРИПТЫ (раскрывающиеся панели) =====
+  function toggleScript(btn) {
+    var panelId = btn.dataset.panel;
+    var src = btn.dataset.src;
+    var panel = document.getElementById(panelId);
+    var open = panel.style.display === 'block';
+    panel.style.display = open ? 'none' : 'block';
+    btn.classList.toggle('open', !open);
+    btn.querySelector('.sheet-btn-sub').textContent = open ? '▼ Развернуть' : '▲ Свернуть';
+    if (!open) {
+      var iframe = panel.querySelector('iframe');
+      if (iframe && !iframe.dataset.loaded) {
+        iframe.src = src;
+        iframe.dataset.loaded = '1';
+      }
+    }
+  }
+
+  function collapseScript(panelId) {
+    var panel = document.getElementById(panelId);
+    if (panel) { panel.style.display = 'none'; }
+    var btn = document.querySelector('[data-panel="' + panelId + '"]');
+    if (btn) {
+      btn.classList.remove('open');
+      btn.querySelector('.sheet-btn-sub').textContent = '▼ Развернуть';
+    }
+  }
+
+  // ===== ВКЛАДКИ =====
+  document.querySelectorAll('.tab-btn').forEach(function(btn) {
+    btn.addEventListener('click', function() {
+      document.querySelectorAll('.tab-btn').forEach(function(b) { b.classList.remove('active'); });
+      document.querySelectorAll('.tab-content').forEach(function(c) { c.classList.remove('active'); });
+      btn.classList.add('active');
+      document.getElementById('tab-' + btn.dataset.tab).classList.add('active');
+    });
+  });
+
+  // ===== ТЕРМИНАЛ И ЗАДАЧИ =====
   let source = null;
   let busy = false;
   const term = document.getElementById('terminal');
 
   function setBusy(val) {
     busy = val;
-    document.querySelectorAll('.btn:not(.btn-sm):not(#btn-stop)').forEach(b => b.disabled = val);
+    document.querySelectorAll('.btn:not(.btn-sm):not(#btn-stop)').forEach(function(b) { b.disabled = val; });
     document.getElementById('btn-stop').style.display = val ? 'inline-flex' : 'none';
     const badge = document.getElementById('badge');
     badge.textContent = val ? '⟳ Выполняется...' : '✓ Готов';
@@ -366,11 +638,24 @@
   function appendLine(text) {
     if (term.textContent.startsWith('Готов')) term.textContent = '';
     const span = document.createElement('span');
-    span.textContent = text + '\n';
-    if      (text.startsWith('✓') || text.includes('успешно'))          span.className = 'ok';
-    else if (text.startsWith('✗') || text.toLowerCase().includes('ошибк') || text.includes('ERROR')) span.className = 'err';
-    else if (text.startsWith('⚠') || text.includes('ЗАНЯТО'))           span.className = 'warn';
-    else if (text.startsWith('▶') || text.startsWith('📋') || text.startsWith('📊')) span.className = 'info';
+    if (text.startsWith('📎 LINK:')) {
+      const url = text.slice('📎 LINK:'.length).trim();
+      span.className = 'ok';
+      const a = document.createElement('a');
+      a.href = url;
+      a.target = '_blank';
+      a.textContent = '⬇ Скачать / открыть отчёт по ЗП';
+      a.style.cssText = 'color:#10b981;text-decoration:underline;cursor:pointer;';
+      span.appendChild(document.createTextNode('📎 '));
+      span.appendChild(a);
+      span.appendChild(document.createTextNode('\n'));
+    } else {
+      span.textContent = text + '\n';
+      if      (text.startsWith('✓') || text.includes('успешно'))          span.className = 'ok';
+      else if (text.startsWith('✗') || text.toLowerCase().includes('ошибк') || text.includes('ERROR')) span.className = 'err';
+      else if (text.startsWith('⚠') || text.includes('ЗАНЯТО'))           span.className = 'warn';
+      else if (text.startsWith('▶') || text.startsWith('📋') || text.startsWith('📊')) span.className = 'info';
+    }
     term.appendChild(span);
     term.scrollTop = term.scrollHeight;
   }
@@ -379,19 +664,89 @@
 
   function runTask(url) {
     if (busy) return;
+    // Переключиться на вкладку Должники где есть терминал
+    document.querySelectorAll('.tab-btn').forEach(function(b) { b.classList.remove('active'); });
+    document.querySelectorAll('.tab-content').forEach(function(c) { c.classList.remove('active'); });
+    document.querySelector('[data-tab="debtors"]').classList.add('active');
+    document.getElementById('tab-debtors').classList.add('active');
     clearTerm();
     setBusy(true);
     if (source) source.close();
     source = new EventSource(url);
-    source.onmessage = e => {
+    source.onmessage = function(e) {
       if (e.data === '[END]') { source.close(); setBusy(false); return; }
       appendLine(e.data);
     };
-    source.onerror = () => {
+    source.onerror = function() {
       appendLine('⚠ Соединение прервано');
       source.close();
       setBusy(false);
     };
+  }
+
+  // ===== БОТ-ТЕРМИНАЛ (вкладка Рассрочки) =====
+  let botSource = null;
+  let botBusy = false;
+  const botTerm = document.getElementById('bot-terminal');
+
+  function setBotBusy(val) {
+    botBusy = val;
+    document.getElementById('bot-btn-stop').style.display = val ? 'inline-flex' : 'none';
+    const badge = document.getElementById('badge');
+    if (val) {
+      badge.textContent = '⟳ Выполняется...';
+      badge.className = 'badge running';
+    } else if (!busy) {
+      badge.textContent = '✓ Готов';
+      badge.className = 'badge';
+    }
+  }
+
+  function appendBotLine(text) {
+    if (botTerm.textContent.startsWith('Готов')) botTerm.textContent = '';
+    const span = document.createElement('span');
+    span.textContent = text + '\n';
+    if      (text.startsWith('✓') || text.includes('успешно'))          span.className = 'ok';
+    else if (text.startsWith('✗') || text.toLowerCase().includes('ошибк') || text.includes('ERROR')) span.className = 'err';
+    else if (text.startsWith('⚠') || text.includes('ЗАНЯТО'))           span.className = 'warn';
+    else if (text.startsWith('▶') || text.startsWith('📋') || text.startsWith('📊') || text.startsWith('[')) span.className = 'info';
+    botTerm.appendChild(span);
+    botTerm.scrollTop = botTerm.scrollHeight;
+  }
+
+  function clearBotTerm() { botTerm.innerHTML = ''; }
+
+  function runBotTask(url) {
+    if (botBusy || busy) return;
+    clearBotTerm();
+    setBotBusy(true);
+    if (botSource) botSource.close();
+    botSource = new EventSource(url);
+    botSource.onmessage = function(e) {
+      if (e.data === '[END]') { botSource.close(); setBotBusy(false); return; }
+      appendBotLine(e.data);
+    };
+    botSource.onerror = function() {
+      appendBotLine('⚠ Соединение прервано');
+      botSource.close();
+      setBotBusy(false);
+    };
+  }
+
+  function stopBotTask() {
+    fetch('/api/stop', { method: 'POST' }).then(function() {
+      appendBotLine('■ Остановлено вручную');
+      if (botSource) botSource.close();
+      setBotBusy(false);
+    });
+  }
+
+  function runBotOrder(force) {
+    var id = document.getElementById('bot-order-id').value.trim();
+    if (!id) { alert('Введите ID заказа'); return; }
+    var url = '/stream/bot/order?id=' + encodeURIComponent(id);
+    if (force) url += '&force=1';
+    runBotTask(url);
   }
 
   function runMerge() {
@@ -400,7 +755,7 @@
   }
 
   function stopTask() {
-    fetch('/api/stop', { method: 'POST' }).then(() => {
+    fetch('/api/stop', { method: 'POST' }).then(function() {
       appendLine('■ Остановлено вручную');
       if (source) source.close();
       setBusy(false);
@@ -415,7 +770,7 @@
         ROUTE_DATE_FROM: document.getElementById('date-from').value.trim(),
         ROUTE_DATE_TO:   document.getElementById('date-to').value.trim(),
       }),
-    }).then(() => appendLine('✓ Даты сохранены в config.txt'));
+    }).then(function() { appendLine('✓ Даты сохранены в config.txt'); });
   }
 </script>
 </body>

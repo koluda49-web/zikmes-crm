@@ -225,7 +225,14 @@ function updateRegistry() {
       'чекбокс всё ещё стоит, можно попробовать обновить ещё раз.';
   }
 
-  SpreadsheetApp.getUi().alert(message);
+  // При вызове через google.script.run (web app) getUi() недоступен — возвращаем строку
+  try { SpreadsheetApp.getUi().alert(message); } catch (e) {}
+  return message;
+}
+
+/** Публичная обёртка для вызова из HTML-дашборда через google.script.run */
+function runUpdateRegistry() {
+  return updateRegistry();
 }
 
 /**
@@ -532,8 +539,18 @@ function createCallBatch_() {
  * нужно будет вписать в scrape_crm.py вместе с WEBHOOK_SECRET.
  */
 function doGet(e) {
-  var action = e.parameter.action;
-  if (e.parameter.secret !== WEBHOOK_SECRET) {
+  var params = (e && e.parameter) ? e.parameter : {};
+  var action = params.action || '';
+
+  // HTML-дашборд — без секрета, при пустом action или action=dashboard
+  if (!action || action === 'dashboard') {
+    return HtmlService.createHtmlOutputFromFile('RegistryDashboard')
+      .setTitle('Реестр должников — Скрипты')
+      .setXFrameOptionsMode(HtmlService.XFrameOptionsMode.ALLOWALL);
+  }
+
+  // МТС-вебхук — требует секрет
+  if (params.secret !== WEBHOOK_SECRET) {
     return ContentService.createTextOutput(JSON.stringify({ success: false, message: 'bad secret' }))
       .setMimeType(ContentService.MimeType.JSON);
   }
