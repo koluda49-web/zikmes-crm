@@ -48,6 +48,9 @@ from bs4 import BeautifulSoup
 import openpyxl
 from openpyxl.styles import Font, PatternFill, Alignment
 import os
+import platform
+
+IS_CLOUD = 'RENDER' in os.environ or platform.system() != 'Windows'
 
 # Все файлы, связанные с обзвоном должников, складываются сюда - чтобы не путать
 # с файлами обычного обзвона по доставке (которые остаются рядом со скриптом,
@@ -145,7 +148,8 @@ DEBTOR_MTS_NUMBERS_FILE = os.path.join(OUTPUT_DIR, "mts_numbers_debtors.csv")  #
 DEBTOR_TASK_NAME_PREFIX = "Обзвон должников"
 DEBTOR_LAST_TASK_NAME_FILE = os.path.join(OUTPUT_DIR, "last_task_name_debtors.txt")  # своё название задания, не пересекается с обычным обзвоном
 
-DOWNLOADS_DIR = os.path.join(os.path.expanduser("~"), "Downloads")
+# В облаке ~/Downloads нет — скачиваем прямо в output/
+DOWNLOADS_DIR = os.path.abspath(OUTPUT_DIR) if IS_CLOUD else os.path.join(os.path.expanduser("~"), "Downloads")
 
 # URL и секрет веб-приложения РЕЕСТРА ДОЛЖНИКОВ читаются из config.txt (ключи
 # DEBTOR_REGISTRY_WEBHOOK и DEBTOR_REGISTRY_SECRET) - впишите их туда после того,
@@ -228,24 +232,34 @@ def create_driver():
     options.add_experimental_option("excludeSwitches", ["enable-automation"])
     options.add_experimental_option("useAutomationExtension", False)
 
-    # Сохраняем профиль Chrome в папку рядом со скриптом.
-    # Это позволяет не вводить логин/пароль Google при каждом запуске —
-    # куки и сессия сохраняются между запусками в этой папке.
-    profile_dir = os.path.join(os.path.dirname(os.path.abspath(__file__)), "chrome_profile")
-    os.makedirs(profile_dir, exist_ok=True)
-    options.add_argument(f"--user-data-dir={profile_dir}")
-
-    # Отключаем всплывающее окно "Сохранить пароль?" — оно может перекрывать
-    # страницу и мешать Selenium кликать по элементам сразу после автологина.
     prefs = {
         "credentials_enable_service": False,
         "profile.password_manager_enabled": False,
         "profile.password_manager_leak_detection": False,
+        "download.prompt_for_download": False,
+        "download.directory_upgrade": True,
+        "download.default_directory": os.path.abspath(DOWNLOADS_DIR),
     }
+
+    if IS_CLOUD:
+        # Headless-режим для облака
+        options.add_argument("--headless=new")
+        options.add_argument("--no-sandbox")
+        options.add_argument("--disable-dev-shm-usage")
+        options.add_argument("--disable-gpu")
+        options.add_argument("--disable-setuid-sandbox")
+        options.add_argument("--window-size=1600,1000")
+    else:
+        # Локально — сохраняем профиль с сессией МТС
+        profile_dir = os.path.join(os.path.dirname(os.path.abspath(__file__)), "chrome_profile")
+        os.makedirs(profile_dir, exist_ok=True)
+        options.add_argument(f"--user-data-dir={profile_dir}")
+
     options.add_experimental_option("prefs", prefs)
 
     driver = webdriver.Chrome(service=service, options=options)
-    driver.maximize_window()
+    if not IS_CLOUD:
+        driver.maximize_window()
     return driver
 
 
@@ -490,9 +504,20 @@ def cmd_call_new(external_driver=None, task_name_prefix=DEBTOR_TASK_NAME_PREFIX,
         else:
             print("  Если МТС попросит войти — авторизуйся в открывшемся окне.")
         print("  Дождись пока полностью загрузится список заданий.")
-        print("  Нажми Enter здесь, когда увидишь кнопку «Добавить задание».")
-        print("=" * 55)
-        input("  -> Нажми Enter: ")
+        if not IS_CLOUD:
+            print("  Нажми Enter здесь, когда увидишь кнопку «Добавить задание».")
+            print("=" * 55)
+            input("  -> Нажми Enter: ")
+        else:
+            print("  Облачный режим: автоматическое ожидание кнопки «Добавить задание»...")
+            print("=" * 55)
+            # Ждём появления кнопки вместо input()
+            try:
+                WebDriverWait(driver, 30).until(
+                    EC.element_to_be_clickable((By.XPATH, "//button[contains(., 'Добавить задание')]"))
+                )
+            except Exception:
+                time.sleep(5)
         print()
 
         print("➕ Нажимаю «Добавить задание»...")
@@ -653,10 +678,13 @@ def cmd_call_new(external_driver=None, task_name_prefix=DEBTOR_TASK_NAME_PREFIX,
 
         if not confirmed:
             print("   ⚠️  Модальное окно подтверждения не появилось или не найдено.")
-            print("   ⚠️  ОБЯЗАТЕЛЬНО посмотри на экран браузера прямо сейчас:")
-            print("   ⚠️  если видишь окно 'Добавление номеров' — нажми в нём")
-            print("   ⚠️  кнопку 'Загрузить список' САМ, и только потом жми Enter здесь.")
-            input("   -> Нажми Enter здесь ПОСЛЕ клика в браузере (или если окна не было): ")
+            if IS_CLOUD:
+                print("   ⚠️  Облако: продолжаю без подтверждения — проверьте МТС вручную.")
+            else:
+                print("   ⚠️  ОБЯЗАТЕЛЬНО посмотри на экран браузера прямо сейчас:")
+                print("   ⚠️  если видишь окно 'Добавление номеров' — нажми в нём")
+                print("   ⚠️  кнопку 'Загрузить список' САМ, и только потом жми Enter здесь.")
+                input("   -> Нажми Enter здесь ПОСЛЕ клика в браузере (или если окна не было): ")
 
         # 10.5 Настраиваем расписание: Пн-Пт, время 07:00 - 21:00
         print("📅 Настраиваю расписание (Пн-Пт, 07:00-21:00)...")
@@ -750,43 +778,120 @@ def cmd_call_new(external_driver=None, task_name_prefix=DEBTOR_TASK_NAME_PREFIX,
                 return
         except Exception as e:
             print(f"   ⚠️  Не удалось настроить расписание автоматически ({e}).")
-            print("   ⚠️  Настрой вручную: Пн-Пт, время 07:00-21:00, затем нажми Enter.")
-            input("   -> Нажми Enter после настройки расписания вручную: ")
+            if IS_CLOUD:
+                print("   ⚠️  Облако: продолжаю — донастройте расписание в МТС вручную.")
+            else:
+                print("   ⚠️  Настрой вручную: Пн-Пт, время 07:00-21:00, затем нажми Enter.")
+                input("   -> Нажми Enter после настройки расписания вручную: ")
 
-        # 10.6 Настройка дозвона: автоматизация этого конкретного виджета
-        # оказалась ненадёжной (плавающий React-компонент) — настраиваем вручную.
-        print("\n" + "📞" * 20)
-        print("  ОСТАНОВКА: настрой параметры дозвона ВРУЧНУЮ на экране браузера:")
-        print("  - Максимум попыток: выбери 3")
-        print("  - Перезванивать через: впиши 5")
-        print("📞" * 20)
-        input("  -> Когда настроишь — нажми Enter ЗДЕСЬ (не раньше!): ")
+        # 10.6 Настройка дозвона: максимум попыток и перезвон
+        print("\n📞 Настраиваю параметры дозвона...")
+        if not IS_CLOUD:
+            print("  ОСТАНОВКА: настрой параметры дозвона ВРУЧНУЮ на экране браузера:")
+            print("  - Максимум попыток: выбери 3")
+            print("  - Перезванивать через: впиши 5")
+            input("  -> Когда настроишь — нажми Enter ЗДЕСЬ (не раньше!): ")
+        else:
+            # Пытаемся автоматизировать. Если не получится — задание создаётся
+            # с дефолтными настройками; пользователь может подправить в МТС вручную.
+            time.sleep(2)
+            try:
+                # Максимум попыток
+                attempt_inputs = driver.find_elements(By.XPATH,
+                    "//input[@type='number'] | //input[contains(@placeholder,'попыт')]"
+                )
+                for inp in attempt_inputs:
+                    try:
+                        if inp.is_displayed():
+                            driver.execute_script("arguments[0].value='3'; arguments[0].dispatchEvent(new Event('input',{bubbles:true})); arguments[0].dispatchEvent(new Event('change',{bubbles:true}));", inp)
+                            print("   ✅ Максимум попыток: 3")
+                            break
+                    except Exception:
+                        continue
+            except Exception as e:
+                print(f"   ⚠️  Не удалось задать максимум попыток: {e}")
+
+            try:
+                # Перезвон через N минут
+                interval_inputs = driver.find_elements(By.XPATH,
+                    "//input[@type='number'] | //input[contains(@placeholder,'минут')]"
+                )
+                set_count = 0
+                for inp in interval_inputs:
+                    try:
+                        if inp.is_displayed() and set_count == 1:
+                            driver.execute_script("arguments[0].value='5'; arguments[0].dispatchEvent(new Event('input',{bubbles:true})); arguments[0].dispatchEvent(new Event('change',{bubbles:true}));", inp)
+                            print("   ✅ Перезвон через: 5 мин")
+                            break
+                        if inp.is_displayed():
+                            set_count += 1
+                    except Exception:
+                        continue
+            except Exception as e:
+                print(f"   ⚠️  Не удалось задать интервал перезвона: {e}")
+
         print("   Продолжаю...")
         time.sleep(0.5)
 
-        # 11. "Включить информирование" — после нескольких неудачных попыток
-        # надёжно автоматизировать этот виджет (разметка/поведение не дались
-        # под автоклик), оставляем настройку вручную, как и параметры дозвона.
-        print("\n" + "🔘" * 20)
-        print("  ОСТАНОВКА: включи тумблер «Включить информирование» ВРУЧНУЮ")
-        print("  на экране браузера (должен стать синим/зелёным).")
-        print("🔘" * 20)
-        input("  -> Когда включишь — нажми Enter ЗДЕСЬ: ")
+        # 11. "Включить информирование"
+        print("\n🔘 Включаю информирование...")
+        if not IS_CLOUD:
+            print("  ОСТАНОВКА: включи тумблер «Включить информирование» ВРУЧНУЮ")
+            print("  на экране браузера (должен стать синим/зелёным).")
+            input("  -> Когда включишь — нажми Enter ЗДЕСЬ: ")
+        else:
+            time.sleep(1)
+            try:
+                # Ищем тумблер/переключатель "Включить информирование"
+                toggles = driver.find_elements(By.XPATH,
+                    "//*[contains(text(),'информирование')]/following::input[@type='checkbox'][1] | "
+                    "//*[contains(text(),'информирование')]/following::*[contains(@class,'toggle') or contains(@class,'switch')][1]"
+                )
+                clicked = False
+                for toggle in toggles:
+                    try:
+                        if toggle.is_displayed():
+                            driver.execute_script("arguments[0].click();", toggle)
+                            print("   ✅ Тумблер «Включить информирование» нажат")
+                            clicked = True
+                            break
+                    except Exception:
+                        continue
+                if not clicked:
+                    # Запасной вариант: ищем label с текстом
+                    labels = driver.find_elements(By.XPATH, "//label[contains(.,'информирование')]")
+                    for label in labels:
+                        try:
+                            if label.is_displayed():
+                                driver.execute_script("arguments[0].click();", label)
+                                print("   ✅ Label «информирование» нажат")
+                                clicked = True
+                                break
+                        except Exception:
+                            continue
+                if not clicked:
+                    print("   ⚠️  Не удалось включить информирование автоматически.")
+                    print("   ⚠️  Задание будет создано — включите вручную в МТС если нужно.")
+            except Exception as e:
+                print(f"   ⚠️  Ошибка при включении информирования: {e}")
         print("   Продолжаю...")
         time.sleep(0.5)
 
-        # Финальная пауза для визуальной проверки перед сохранением
-        print("\n" + "=" * 55)
-        print("  ПРОВЕРЬ НА ЭКРАНЕ БРАУЗЕРА:")
-        print("  - правильный текст сообщения?")
-        print("  - правильное количество номеров?")
-        print("  - расписание: Пн-Пт, 07:00-21:00?")
-        print("  - максимум попыток: 3, перезвон через: 5 минут?")
-        print("  - включён ли тумблер «Включить информирование»?")
-        print("=" * 55)
-        print("  Если всё верно — нажми Enter, чтобы сохранить и запустить обзвон.")
-        print("  Если что-то не так — закрой окно браузера вместо Enter.")
-        input("  -> Нажми Enter: ")
+        # Финальная проверка (только локально — в облаке некому смотреть)
+        if not IS_CLOUD:
+            print("\n" + "=" * 55)
+            print("  ПРОВЕРЬ НА ЭКРАНЕ БРАУЗЕРА:")
+            print("  - правильный текст сообщения?")
+            print("  - правильное количество номеров?")
+            print("  - расписание: Пн-Пт, 07:00-21:00?")
+            print("  - максимум попыток: 3, перезвон через: 5 минут?")
+            print("  - включён ли тумблер «Включить информирование»?")
+            print("=" * 55)
+            print("  Если всё верно — нажми Enter, чтобы сохранить и запустить обзвон.")
+            print("  Если что-то не так — закрой окно браузера вместо Enter.")
+            input("  -> Нажми Enter: ")
+        else:
+            print("☁️  Облачный режим: сохраняю задание автоматически...")
 
         # 12. Сохраняем
         print("💾 Сохраняю задание (это запускает обзвон)...")
@@ -874,7 +979,8 @@ def cmd_fetch_report(task_url: str, external_driver=None, merge_fn=None, task_na
 
         if not task_name:
             print("   ⚠️  Не найден файл с названием задания (last_task_name.txt).")
-            input("   Нажми кнопку скачивания вручную, затем Enter: ")
+            if not IS_CLOUD:
+                input("   Нажми кнопку скачивания вручную, затем Enter: ")
             selected_row = None
         else:
             print(f"   Ищу задание: «{task_name}»")
@@ -916,6 +1022,9 @@ def cmd_fetch_report(task_url: str, external_driver=None, merge_fn=None, task_na
                         pass
             else:
                 print(f"   ⚠️  Задание не завершилось за {max_wait_minutes} минут.")
+                if IS_CLOUD:
+                    print("   ⚠️  Облако: прерываю — запустите повторно позже.")
+                    return
                 print("   Скачай отчёт вручную когда задание завершится.")
                 input("   -> Нажми Enter после скачивания: ")
 
@@ -944,6 +1053,9 @@ def cmd_fetch_report(task_url: str, external_driver=None, merge_fn=None, task_na
         if not download_clicked:
             print()
             print("   ⚠️  Не нашёл кнопку скачивания автоматически.")
+            if IS_CLOUD:
+                print("   ⚠️  Облако: прерываю — запустите повторно или скачайте вручную.")
+                return
             print("   Сделай это вручную:")
             print("   1. Посмотри на открытый браузер — там список заданий МТС")
             print("   2. Нажми кнопку скачивания отчёта (иконка ↓) у нужного задания")

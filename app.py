@@ -15,8 +15,8 @@ app.config['TEMPLATES_AUTO_RELOAD'] = True
 _process = None
 _process_lock = threading.Lock()
 
-BOT_DIR    = r'C:\okcrm_bot'
-BOT_PYTHON = r'C:\okcrm_bot\venv\Scripts\python.exe'
+BOT_DIR    = str(BASE_DIR / 'okcrm_bot')
+BOT_PYTHON = sys.executable
 
 # Облачный режим: нет локальных скриптов (Render, Railway и т.д.)
 IS_CLOUD = 'RENDER' in os.environ or platform.system() != 'Windows'
@@ -200,8 +200,6 @@ def salary_report():
 
 @app.route('/stream/scan')
 def stream_scan():
-    if IS_CLOUD:
-        return sse_cloud_error('Парсер просрочки CRM — локальный скрипт')
     return sse_stream([sys.executable, 'bot.py'], 'Парсер просрочки CRM')
 
 
@@ -209,8 +207,6 @@ def stream_scan():
 def stream_mts(action):
     if action not in MTS_LABELS:
         return jsonify({'error': 'unknown action'}), 400
-    if IS_CLOUD:
-        return sse_cloud_error(MTS_LABELS[action])
     cmd = [sys.executable, 'scrape_crm.py', action]
     label = MTS_LABELS[action]
     if action == 'debtors_merge':
@@ -222,22 +218,16 @@ def stream_mts(action):
 
 @app.route('/stream/bot/run')
 def stream_bot_run():
-    if IS_CLOUD:
-        return sse_cloud_error('Оформление рассрочек — локальный скрипт')
     return sse_stream([BOT_PYTHON, 'bot.py'], 'Оформление рассрочек (полный прогон)', cwd=BOT_DIR)
 
 
 @app.route('/stream/bot/dry_run')
 def stream_bot_dry_run():
-    if IS_CLOUD:
-        return sse_cloud_error('Пробный прогон — локальный скрипт')
     return sse_stream([BOT_PYTHON, 'bot.py', '--dry-run'], 'Пробный прогон (dry-run, без изменений)', cwd=BOT_DIR)
 
 
 @app.route('/stream/bot/order')
 def stream_bot_order():
-    if IS_CLOUD:
-        return sse_cloud_error('Обработка заказа — локальный скрипт')
     order_id = request.args.get('id', '').strip()
     force = request.args.get('force', '0') == '1'
     if not order_id:
@@ -252,7 +242,7 @@ def stream_bot_order():
 @app.route('/stream/bot/session')
 def stream_bot_session():
     if IS_CLOUD:
-        return sse_cloud_error('Захват сессии Google — локальный скрипт')
+        return sse_cloud_error('Захват сессии — нужен локальный Chrome с CDP')
     return sse_stream([BOT_PYTHON, 'grab_session_from_cdp.py'], 'Захват сессии Google (CDP)', cwd=BOT_DIR)
 
 

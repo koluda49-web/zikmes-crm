@@ -19,7 +19,10 @@ bot.py — парсер просроченных платежей по расс�
 selectors.py (там расставлены пометки [ПРОВЕРИТЬ]). См. README.md.
 """
 
+import base64
 import csv
+import os
+import platform
 import sys
 import time
 import traceback
@@ -37,6 +40,20 @@ from sms_export import write_sms_phones_file
 BASE_DIR = Path(__file__).parent
 PROFILE_DIR = BASE_DIR / "chrome_profile"
 CONFIG_FILE = BASE_DIR / "config.txt"
+
+IS_CLOUD = 'RENDER' in os.environ or platform.system() != 'Windows'
+
+# В облаке грузим сессию CRM из env var CRM_STORAGE_STATE (base64 JSON)
+CLOUD_STATE_FILE = BASE_DIR / "cloud_crm_state.json"
+if IS_CLOUD:
+    _state_env = os.environ.get('CRM_STORAGE_STATE', '')
+    if _state_env:
+        try:
+            CLOUD_STATE_FILE.write_text(
+                base64.b64decode(_state_env).decode('utf-8'), encoding='utf-8'
+            )
+        except Exception as _e:
+            print(f"⚠️  Не удалось загрузить CRM_STORAGE_STATE: {_e}")
 ERROR_SCREENSHOTS_DIR = BASE_DIR / "error_screenshots"
 ERRORS_CSV = BASE_DIR / "errors.csv"
 OUTPUT_DIR = BASE_DIR / "output"
@@ -103,6 +120,12 @@ def check_crm_session(page, orders_url: str) -> bool:
 
 
 def wait_for_manual_login(page, orders_url: str) -> None:
+    if IS_CLOUD:
+        sys.exit(
+            "❌ Сессия CRM истекла.\n"
+            "Запустите export_crm_session.py локально и обновите\n"
+            "env var CRM_STORAGE_STATE в Render Dashboard."
+        )
     print(
         "\nСессия CRM не активна или устарела.\n"
         "1. В открывшемся окне Chrome войдите в CRM через Google вручную.\n"
@@ -325,11 +348,33 @@ def main():
     accumulated_phones = []
 
     with sync_playwright() as p:
-        context = p.chromium.launch_persistent_context(
-            str(PROFILE_DIR),
-            headless=False,
-            args=["--disable-blink-features=AutomationControlled"],
-        )
+        if IS_CLOUD:
+            if not CLOUD_STATE_FILE.exists():
+                sys.exit(
+                    "❌ Файл сессии CRM не найден.\n"
+                    "Установите env var CRM_STORAGE_STATE в Render Dashboard.\n"
+                    "Запустите export_crm_session.py локально чтобы получить значение."
+                )
+            browser = p.chromium.launch(
+                headless=True,
+                args=[
+                    '--no-sandbox',
+                    '--disable-dev-shm-usage',
+                    '--disable-gpu',
+                    '--disable-setuid-sandbox',
+                    '--disable-blink-features=AutomationControlled',
+                ],
+            )
+            context = browser.new_context(
+                storage_state=str(CLOUD_STATE_FILE),
+                viewport={"width": 1600, "height": 1000},
+            )
+        else:
+            context = p.chromium.launch_persistent_context(
+                str(PROFILE_DIR),
+                headless=False,
+                args=["--disable-blink-features=AutomationControlled"],
+            )
         page = context.new_page()
         page.on("dialog", lambda d: d.accept())
 

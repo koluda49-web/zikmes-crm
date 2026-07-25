@@ -4,7 +4,7 @@ services:
     env: python
     region: frankfurt
     plan: free
-    buildCommand: pip install flask gunicorn requests
+    buildCommand: bash build.sh
     startCommand: gunicorn app:app --bind 0.0.0.0:$PORT --workers 1 --threads 4 --timeout 180
     envVars:
       - key: CRM_ORDERS_URL
@@ -27,4 +27,8 @@ services:
       - key: MTS_PASSWORD
         sync: false
       - key: SALARY_REPORT_SCRIPT_URL
+        sync: false
+      - key: CRM_STORAGE_STATE
+        sync: false
+      - key: OKCRM_STORAGE_STATE
         sync: false

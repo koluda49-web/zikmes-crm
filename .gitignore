@@ -11,6 +11,19 @@ __pycache__/
 # Playwright / Chrome
 chrome_profile/
 
+# okcrm_bot — сессии и БД
+okcrm_bot/storage_state.json
+okcrm_bot/cloud_storage_state.json
+okcrm_bot/state.sqlite
+okcrm_bot/manual_review.csv
+okcrm_bot/errors.csv
+okcrm_bot/skipped_orders.csv
+okcrm_bot/downloads/
+
+# CRM parser cloud session
+cloud_crm_state.json
+crm_storage_state.b64
+
 # Netlify build artifacts (генерируются при сборке)
 netlify/functions/app/flask_app.py
 netlify/functions/app/templates/
