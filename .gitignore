@@ -12,9 +12,8 @@ __pycache__/
 chrome_profile/
 
 # Netlify build artifacts (генерируются при сборке)
-netlify/functions/_packages/
-netlify/functions/flask_app.py
-netlify/functions/templates/
+netlify/functions/app/flask_app.py
+netlify/functions/app/templates/
 
 # Данные (пересоздаются автоматически)
 state.sqlite

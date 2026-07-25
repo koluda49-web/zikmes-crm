@@ -1,7 +1,7 @@
 [build]
   functions = "netlify/functions"
   publish   = "."
-  command   = "pip install flask serverless-wsgi requests --target netlify/functions/_packages && cp app.py netlify/functions/flask_app.py && mkdir -p netlify/functions/templates && cp templates/dashboard.html netlify/functions/templates/"
+  command   = "cp app.py netlify/functions/app/flask_app.py && mkdir -p netlify/functions/app/templates && cp templates/dashboard.html netlify/functions/app/templates/"
 
 [build.environment]
   PYTHON_VERSION = "3.11"
