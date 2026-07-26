@@ -15,7 +15,17 @@ services:
         value: "Погашен,Оплачен,Неактивный"
       - key: ROUTE_DATE_DAYS_BACK
         value: "300"
+      # Playwright ищет браузеры по этому пути (установлены в build.sh)
+      - key: PLAYWRIGHT_BROWSERS_PATH
+        value: /opt/render/project/src/.pw-browsers
+      # Python версия — без пина requirements.txt могут взять несовместимый 3.13
+      - key: PYTHON_VERSION
+        value: "3.11.9"
       # Секреты — заполнить вручную в Render Dashboard после деплоя:
+      - key: SECRET_KEY
+        sync: false
+      - key: APP_PASSWORD
+        sync: false
       - key: GOOGLE_SHEET_WEBHOOK
         sync: false
       - key: DEBTOR_REGISTRY_WEBHOOK
@@ -30,5 +40,8 @@ services:
         sync: false
       - key: CRM_STORAGE_STATE
         sync: false
+      # OKCRM_STORAGE_STATE: не задавать если используется кнопка "Загрузить сессию" в дашборде.
+      # При заданной переменной config.py игнорирует загруженный storage_state.json.
+      # Задать только если сессия передаётся через env var (base64 от export_crm_session.py).
       - key: OKCRM_STORAGE_STATE
         sync: false

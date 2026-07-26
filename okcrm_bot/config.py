@@ -23,10 +23,23 @@ if IS_CLOUD:
                 _f.write(base64.b64decode(_state_env).decode('utf-8'))
             STORAGE_STATE_PATH = _cloud_file
         except Exception as _e:
-            print(f"⚠️  Не удалось загрузить OKCRM_STORAGE_STATE: {_e}")
-            STORAGE_STATE_PATH = _STATE_FILE
-    else:
+            # Env var повреждён — проверяем, есть ли файл от кнопки "Загрузить сессию"
+            print(f"⚠️  Не удалось декодировать OKCRM_STORAGE_STATE: {_e}")
+            if os.path.exists(_STATE_FILE):
+                print(f"✓  Используем storage_state.json (загружен через дашборд)")
+                STORAGE_STATE_PATH = _STATE_FILE
+            else:
+                print("✗  ОШИБКА: сессия недоступна. Используй кнопку «☁️ Загрузить сессию» в дашборде.")
+                STORAGE_STATE_PATH = _STATE_FILE  # bot.py выдаст понятную ошибку при старте
+    elif os.path.exists(_STATE_FILE):
+        # OKCRM_STORAGE_STATE не задана — используем файл от кнопки "Загрузить сессию"
+        print(f"✓  Используем storage_state.json (загружен через дашборд)")
         STORAGE_STATE_PATH = _STATE_FILE
+    else:
+        print("✗  ОШИБКА: сессия Google не найдена.")
+        print("   Варианты: (1) вставь storage_state.json через кнопку «☁️ Загрузить сессию»,")
+        print("             (2) задай OKCRM_STORAGE_STATE в Render Dashboard.")
+        STORAGE_STATE_PATH = _STATE_FILE  # bot.py выдаст понятную ошибку при старте
 else:
     STORAGE_STATE_PATH = _STATE_FILE
 

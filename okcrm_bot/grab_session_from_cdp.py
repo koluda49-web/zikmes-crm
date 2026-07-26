@@ -15,17 +15,61 @@ localStorage - в storage_state.json.
 3. Не закрывайте это окно Chrome, пока этот скрипт не отработает.
 """
 
+import os
+import subprocess
+import time
+import urllib.request
+
 import config
 from playwright.sync_api import sync_playwright
 
+CHROME_EXE = r"C:\Program Files\Google\Chrome\Application\chrome.exe"
+CDP_PROFILE = r"C:\chrome-remote-profile"
+CDP_URL = "http://localhost:9222"
+
+
+def _cdp_alive() -> bool:
+    try:
+        urllib.request.urlopen(f"{CDP_URL}/json/version", timeout=3)
+        return True
+    except Exception:
+        return False
+
+
+def _launch_chrome_cdp() -> bool:
+    """Запускает Chrome с отладочным портом и выделенным профилем.
+    Профиль хранит логины CRM и Google — повторная авторизация не нужна."""
+    if not os.path.exists(CHROME_EXE):
+        print(f"Chrome не найден: {CHROME_EXE}")
+        return False
+    print("Chrome с портом 9222 не запущен — запускаю сам...")
+    subprocess.Popen([
+        CHROME_EXE,
+        "--remote-debugging-port=9222",
+        f"--user-data-dir={CDP_PROFILE}",
+        "https://a.ok-crm.com",
+        "https://drive.google.com",
+    ])
+    for _ in range(20):
+        time.sleep(1)
+        if _cdp_alive():
+            print("Chrome запущен, порт 9222 доступен.")
+            time.sleep(3)  # даём вкладкам загрузиться
+            return True
+    print("Chrome запустился, но порт 9222 так и не открылся.")
+    return False
+
 
 def main():
+    if not _cdp_alive():
+        if not _launch_chrome_cdp():
+            return
+
     with sync_playwright() as p:
         try:
-            browser = p.chromium.connect_over_cdp("http://localhost:9222")
+            browser = p.chromium.connect_over_cdp(CDP_URL)
         except Exception as e:
             print("Не удалось подключиться к Chrome на порту 9222.")
-            print("Проверьте, что Chrome запущен именно с флагом --remote-debugging-port=9222")
             print(f"Техническая ошибка: {e}")
             return
 
@@ -41,7 +85,8 @@ def main():
 
         if target_context is None:
             print("Не нашёл открытую вкладку с a.ok-crm.com в этом Chrome.")
-            print("Убедитесь, что в окне, запущенном с --remote-debugging-port, открыт a.ok-crm.com и вы залогинены.")
+            print("Откройте a.ok-crm.com в окне Chrome с отладочным портом и запустите захват ещё раз.")
+            print("Если сессия в этом окне протухла — залогиньтесь там заново.")
             return
 
         target_context.storage_state(path=config.STORAGE_STATE_PATH)

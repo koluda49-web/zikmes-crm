@@ -529,11 +529,70 @@
 
     <!-- Сессия Google -->
     <div class="card">
+    {% if not cfg.IS_CLOUD %}
       <div class="card-title">🔑 Сессия Google Drive</div>
       <div class="card-desc">Сессия периодически протухает. Перед захватом вручную открой Chrome с флагом <code style="background:#0f1420;padding:1px 5px;border-radius:4px;font-size:11px">--remote-debugging-port=9222</code> и войди на CRM и Google Drive.</div>
       <button class="btn btn-purple" onclick="runBotTask('/stream/bot/session')">
         🔑 Захватить сессию (grab_session_from_cdp.py)
       </button>
+    {% else %}
+      <div class="card-title">🔑 Сессия Google Drive (облако)</div>
+      <div class="card-desc">В облаке Chrome недоступен. Захвати сессию локально (кнопка «Захватить сессию» в localhost:5000), затем вставь сюда содержимое файла <code style="background:#0f1420;padding:1px 5px;border-radius:4px;font-size:11px">okcrm_bot/storage_state.json</code> (принимается и base64). Файл живёт до следующего передеплоя.</div>
+      <textarea id="session-json-input" rows="6" placeholder="Вставь содержимое storage_state.json..." spellcheck="false" style="width:100%;background:#0f1420;border:1px solid #2d3550;border-radius:6px;color:#e8eaf6;padding:8px 10px;font-size:12px;font-family:'Consolas','Courier New',monospace;line-height:1.5;outline:none;resize:vertical;margin-bottom:8px"></textarea>
+      <button class="btn btn-purple" id="session-upload-btn" onclick="uploadSession()">
+        ☁️ Загрузить сессию
+      </button>
+      <div id="session-upload-msg" style="margin-top:8px;font-size:12px;line-height:1.5;color:#6b7280;word-break:break-word"></div>
+      <script>
+        function uploadSession() {
+          var el  = document.getElementById('session-json-input');
+          var msg = document.getElementById('session-upload-msg');
+          var btn = document.getElementById('session-upload-btn');
+          var raw = (el.value || '').trim();
+
+          function show(color, text) { msg.style.color = color; msg.textContent = text; }
+          function done() { btn.disabled = false; }
+
+          if (!raw) { show('#ef4444', '✗ Вставьте содержимое storage_state.json'); return; }
+
+          var body;
+          try {
+            var parsed = JSON.parse(raw);
+            if (!parsed || typeof parsed !== 'object' || !Array.isArray(parsed.cookies)) {
+              show('#ef4444', '✗ В JSON нет списка "cookies" — это не файл сессии Playwright.'); return;
+            }
+            if (parsed.cookies.length === 0) {
+              show('#ef4444', '✗ Список "cookies" пуст — сессия не была захвачена.'); return;
+            }
+            body = { storage_state: parsed };
+          } catch (e) {
+            body = { storage_state: raw };
+          }
+
+          btn.disabled = true;
+          show('#6b7280', '⏳ Загрузка...');
+
+          fetch('/api/upload-session', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(body)
+          })
+            .then(function(r) {
+              var ct = r.headers.get('content-type') || '';
+              if (ct.indexOf('application/json') === -1) {
+                throw new Error('сессия входа истекла — обновите страницу и войдите заново');
+              }
+              return r.json();
+            })
+            .then(function(d) {
+              if (d && d.ok) { show('#10b981', '✓ ' + (d.message || 'Сессия сохранена')); el.value = ''; }
+              else { show('#ef4444', '✗ ' + ((d && d.error) || 'неизвестная ошибка')); }
+              done();
+            })
+            .catch(function(e) { show('#ef4444', '✗ ' + (e && e.message ? e.message : e)); done(); });
+        }
+      </script>
+    {% endif %}
 
       <!-- Ссылки -->
       <div style="margin-top:14px; border-top:1px solid #2d3550; padding-top:12px;">

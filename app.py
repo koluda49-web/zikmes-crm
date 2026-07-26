@@ -313,6 +313,107 @@ def stream_bot_session():
     return sse_stream([BOT_PYTHON, 'grab_session_from_cdp.py'], 'Захват сессии Google (CDP)', cwd=BOT_DIR)
 
 
+@app.route('/api/upload-session', methods=['POST'])
+@requires_auth
+def api_upload_session():
+    """Облачная замена grab_session_from_cdp.py: принять storage_state.json через браузер.
+
+    Принимает {"storage_state": {...}} (JSON-объект), строку с JSON-текстом
+    или base64-строку. Пишет в okcrm_bot/storage_state.json атомарно.
+
+    ВАЖНО: если в Render задана переменная OKCRM_STORAGE_STATE, config.py при
+    импорте переключит STORAGE_STATE_PATH на cloud_storage_state.json и загруженный
+    файл будет проигнорирован. Поэтому переменную снимаем из окружения процесса
+    (работает при gunicorn --workers 1, что и задано в render.yaml).
+
+    Файл живёт до следующего деплоя/перезапуска (ФС на Render эфемерная).
+    """
+    import json as _json
+    import base64 as _base64
+
+    if not IS_CLOUD:
+        return jsonify({'ok': False, 'error': 'только для облачного режима'}), 403
+
+    payload = request.get_json(silent=True)
+    if not isinstance(payload, dict):
+        return jsonify({'ok': False, 'error': 'ожидался JSON-объект в теле запроса'}), 400
+
+    raw = payload.get('storage_state')
+    if raw is None or (isinstance(raw, str) and not raw.strip()):
+        return jsonify({'ok': False, 'error': 'пустое поле storage_state'}), 400
+
+    if isinstance(raw, dict):
+        state = raw
+    elif isinstance(raw, str):
+        text = raw.strip()
+        state = None
+        problems = []
+        # 1) обычный JSON-текст — самый частый случай (копипаста файла)
+        try:
+            state = _json.loads(text)
+        except Exception as e:
+            problems.append(f'как JSON: {e}')
+        # 2) иначе base64 → JSON (передача через буфер обмена / env var)
+        if not isinstance(state, dict):
+            compact = ''.join(text.split())         # убираем переносы строк и пробелы
+            compact += '=' * (-len(compact) % 4)    # чиним padding
+            try:
+                state = _json.loads(_base64.b64decode(compact, validate=True).decode('utf-8'))
+            except Exception as e:
+                problems.append(f'как base64: {e}')
+                state = None
+        if not isinstance(state, dict):
+            return jsonify({
+                'ok': False,
+                'error': 'строку не удалось разобрать (' + '; '.join(problems) + ')',
+            }), 400
+    else:
+        return jsonify({
+            'ok': False,
+            'error': 'storage_state должен быть JSON-объектом или строкой (JSON/base64)',
+        }), 400
+
+    cookies = state.get('cookies')
+    if not isinstance(cookies, list):
+        return jsonify({
+            'ok': False,
+            'error': 'в storage_state нет списка "cookies" — это не файл сессии Playwright',
+        }), 400
+    if not cookies:
+        return jsonify({
+            'ok': False,
+            'error': 'список "cookies" пуст — сессия не была захвачена',
+        }), 400
+
+    # Снимаем env var до записи: иначе config.py бота при следующем запуске
+    # подсунет ему cloud_storage_state.json со старой сессией из Render env.
+    os.environ.pop('OKCRM_STORAGE_STATE', None)
+
+    target = Path(BOT_DIR) / 'storage_state.json'
+    try:
+        target.parent.mkdir(parents=True, exist_ok=True)
+        tmp = target.with_name(target.name + '.tmp')
+        tmp.write_text(
+            _json.dumps(state, ensure_ascii=False, indent=2),
+            encoding='utf-8',
+        )
+        os.replace(str(tmp), str(target))  # атомарно — бот не прочитает недописанный файл
+    except Exception as e:
+        return jsonify({'ok': False, 'error': f'не удалось записать файл: {e}'}), 500
+
+    n = len(cookies)
+    origins = state.get('origins')
+    return jsonify({
+        'ok': True,
+        'cookies': n,
+        'origins': len(origins) if isinstance(origins, list) else 0,
+        'message': (
+            f'Сессия сохранена: {n} cookies → okcrm_bot/storage_state.json. '
+            'Активна до следующего передеплоя.'
+        ),
+    })
+
+
 if __name__ == '__main__':
     port = int(os.environ.get('PORT', 5000))
     if not IS_CLOUD:
