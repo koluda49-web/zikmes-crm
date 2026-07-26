@@ -4,14 +4,27 @@ import platform
 import subprocess
 import threading
 import queue
+from functools import wraps
 from pathlib import Path
-from flask import Flask, render_template, Response, jsonify, request, stream_with_context
+from flask import Flask, render_template, Response, jsonify, request, stream_with_context, session, redirect, url_for
 
 BASE_DIR = Path(__file__).parent
 CONFIG_FILE = BASE_DIR / 'config.txt'
 
 app = Flask(__name__)
 app.config['TEMPLATES_AUTO_RELOAD'] = True
+app.secret_key = os.environ.get('SECRET_KEY', 'zikmes-crm-2026-key')
+
+APP_PASSWORD = os.environ.get('APP_PASSWORD', 'shtenli')
+
+
+def requires_auth(f):
+    @wraps(f)
+    def decorated(*args, **kwargs):
+        if not session.get('authenticated'):
+            return redirect(url_for('login'))
+        return f(*args, **kwargs)
+    return decorated
 
 _process = None
 _process_lock = threading.Lock()
@@ -147,7 +160,25 @@ def sse_cloud_error(label):
     )
 
 
+@app.route('/login', methods=['GET', 'POST'])
+def login():
+    error = None
+    if request.method == 'POST':
+        if request.form.get('password') == APP_PASSWORD:
+            session['authenticated'] = True
+            return redirect(url_for('index'))
+        error = 'Неверный пароль'
+    return render_template('login.html', error=error)
+
+
+@app.route('/logout')
+def logout():
+    session.clear()
+    return redirect(url_for('login'))
+
+
 @app.route('/')
+@requires_auth
 def index():
     cfg = load_config()
     cfg['IS_CLOUD'] = IS_CLOUD
@@ -155,11 +186,13 @@ def index():
 
 
 @app.route('/api/status')
+@requires_auth
 def api_status():
     return jsonify({'running': is_running(), 'cloud': IS_CLOUD})
 
 
 @app.route('/api/stop', methods=['POST'])
+@requires_auth
 def api_stop():
     if _process and _process.poll() is None:
         _process.terminate()
@@ -168,6 +201,7 @@ def api_stop():
 
 
 @app.route('/api/config', methods=['POST'])
+@requires_auth
 def api_config():
     if IS_CLOUD:
         return jsonify({'ok': False, 'error': 'config readonly in cloud mode'})
@@ -185,6 +219,7 @@ MTS_LABELS = {
 
 
 @app.route('/api/salary-report')
+@requires_auth
 def salary_report():
     cfg = load_config()
     script_url = cfg.get('SALARY_REPORT_SCRIPT_URL', '')
@@ -218,6 +253,7 @@ def salary_report():
 
 
 @app.route('/stream/scan')
+@requires_auth
 def stream_scan():
     extra = {}
     d_from = request.args.get('date_from', '').strip()
@@ -230,6 +266,7 @@ def stream_scan():
 
 
 @app.route('/stream/mts/<action>')
+@requires_auth
 def stream_mts(action):
     if action not in MTS_LABELS:
         return jsonify({'error': 'unknown action'}), 400
@@ -243,16 +280,19 @@ def stream_mts(action):
 
 
 @app.route('/stream/bot/run')
+@requires_auth
 def stream_bot_run():
     return sse_stream([BOT_PYTHON, 'bot.py'], 'Оформление рассрочек (полный прогон)', cwd=BOT_DIR)
 
 
 @app.route('/stream/bot/dry_run')
+@requires_auth
 def stream_bot_dry_run():
     return sse_stream([BOT_PYTHON, 'bot.py', '--dry-run'], 'Пробный прогон (dry-run, без изменений)', cwd=BOT_DIR)
 
 
 @app.route('/stream/bot/order')
+@requires_auth
 def stream_bot_order():
     order_id = request.args.get('id', '').strip()
     force = request.args.get('force', '0') == '1'
@@ -266,6 +306,7 @@ def stream_bot_order():
 
 
 @app.route('/stream/bot/session')
+@requires_auth
 def stream_bot_session():
     if IS_CLOUD:
         return sse_cloud_error('Захват сессии — нужен локальный Chrome с CDP')
