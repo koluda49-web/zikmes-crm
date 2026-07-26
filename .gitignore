@@ -20,6 +20,9 @@ okcrm_bot/errors.csv
 okcrm_bot/skipped_orders.csv
 okcrm_bot/downloads/
 
+# Playwright browsers (устанавливаются при сборке)
+.pw-browsers/
+
 # CRM parser cloud session
 cloud_crm_state.json
 crm_storage_state.b64
