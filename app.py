@@ -35,6 +35,19 @@ BOT_PYTHON = sys.executable
 # Облачный режим: нет локальных скриптов (Render, Railway и т.д.)
 IS_CLOUD = 'RENDER' in os.environ or platform.system() != 'Windows'
 
+# Автозагрузка service_account.json из переменной окружения GOOGLE_SA_JSON.
+# Позволяет не загружать ключ вручную после каждого деплоя.
+_sa_env = os.environ.get('GOOGLE_SA_JSON', '').strip()
+_sa_target = BASE_DIR / 'okcrm_bot' / 'service_account.json'
+if _sa_env and not _sa_target.exists():
+    try:
+        import json as _json
+        _sa_obj = _json.loads(_sa_env)
+        _sa_target.write_text(_json.dumps(_sa_obj, ensure_ascii=False, indent=2), encoding='utf-8')
+        print(f'[startup] service_account.json восстановлен из GOOGLE_SA_JSON ({_sa_obj.get("client_email", "?")})', flush=True)
+    except Exception as _e:
+        print(f'[startup] WARN: не удалось распарсить GOOGLE_SA_JSON: {_e}', flush=True)
+
 # Runtime-фикс: на Python 3.14 файл okcrm_bot/selectors.py затеняет stdlib selectors.
 # Если старый деплой — переименовываем файл и патчим импорт в bot.py прямо при старте.
 _sel_old = BASE_DIR / 'okcrm_bot' / 'selectors.py'
