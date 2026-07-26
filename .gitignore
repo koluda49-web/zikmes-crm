@@ -1,5 +1,6 @@
 # Секреты — никогда не коммитить
 config.txt
+service_account.json
 
 # Python
 venv/
