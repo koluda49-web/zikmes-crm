@@ -20,7 +20,7 @@ import zipfile
 from playwright.sync_api import sync_playwright, TimeoutError as PlaywrightTimeoutError
 
 import config
-import selectors as sel
+import bot_selectors as sel
 import state_store
 from parse_notes import resolve_downpayment_amount
 import drive_utils
