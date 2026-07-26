@@ -230,31 +230,47 @@ def _find_pw_chromium():
     """Ищет Playwright-установленный Chromium и возвращает (путь, версия)."""
     import glob as _glob
     import subprocess as _sp
-    pw_root = os.environ.get(
-        'PLAYWRIGHT_BROWSERS_PATH', '/opt/render/project/src/.pw-browsers'
-    )
-    # Playwright 1.44+ uses chrome-linux-x64, older versions use chrome-linux
-    candidates = sorted(
-        _glob.glob(os.path.join(pw_root, 'chromium-*/chrome-linux-x64/chrome'))
-        + _glob.glob(os.path.join(pw_root, 'chromium-*/chrome-linux/chrome'))
-        + _glob.glob(os.path.join(pw_root, 'chromium-*/chrome-linux-arm64/chrome'))
-    )
-    print(f"   [MTS] PLAYWRIGHT_BROWSERS_PATH={pw_root}")
-    if not candidates:
-        try:
-            entries = os.listdir(pw_root) if os.path.isdir(pw_root) else ['(директория не найдена)']
-            print(f"   [MTS] Содержимое .pw-browsers: {entries}")
-        except Exception:
-            pass
-        return None, None
-    binary = candidates[-1]
+
+    # Убеждаемся что Playwright знает, где его браузеры
+    if 'PLAYWRIGHT_BROWSERS_PATH' not in os.environ:
+        os.environ['PLAYWRIGHT_BROWSERS_PATH'] = '/opt/render/project/src/.pw-browsers'
+
+    # Способ 1: спрашиваем у Playwright API — самый надёжный, не зависит от структуры папок
     try:
-        out = _sp.check_output([binary, '--version'], stderr=_sp.DEVNULL, text=True)
-        m = re.search(r'[\d]+\.[\d]+\.[\d]+\.[\d]+', out)
-        return binary, (m.group(0) if m else None)
+        from playwright.sync_api import sync_playwright
+        with sync_playwright() as p:
+            binary = p.chromium.executable_path
+        if binary and os.path.exists(binary):
+            print(f"   [MTS] Chromium (Playwright API): {binary}")
+            try:
+                out = _sp.check_output([binary, '--version'], stderr=_sp.DEVNULL, text=True)
+                m = re.search(r'[\d]+\.[\d]+\.[\d]+\.[\d]+', out)
+                return binary, (m.group(0) if m else None)
+            except Exception as e:
+                print(f"   [MTS] --version: {e}")
+                return binary, None
+        print(f"   [MTS] Playwright вернул путь, но файл не существует: {binary}")
     except Exception as e:
-        print(f"   [MTS] --version failed: {e}")
-        return binary, None
+        print(f"   [MTS] Playwright API: {e}")
+
+    # Способ 2: рекурсивный поиск любого файла 'chrome' в .pw-browsers/chromium-*/
+    pw_root = os.environ.get('PLAYWRIGHT_BROWSERS_PATH', '/opt/render/project/src/.pw-browsers')
+    candidates = sorted(_glob.glob(
+        os.path.join(pw_root, 'chromium-*', '**', 'chrome'),
+        recursive=True
+    ))
+    if candidates:
+        binary = candidates[-1]
+        print(f"   [MTS] Chromium (glob): {binary}")
+        try:
+            out = _sp.check_output([binary, '--version'], stderr=_sp.DEVNULL, text=True)
+            m = re.search(r'[\d]+\.[\d]+\.[\d]+\.[\d]+', out)
+            return binary, (m.group(0) if m else None)
+        except Exception as e:
+            print(f"   [MTS] --version: {e}")
+            return binary, None
+
+    return None, None
 
 
 def create_driver():
