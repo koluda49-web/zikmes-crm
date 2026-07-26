@@ -147,6 +147,8 @@ def sse_stream(cmd, label, cwd=None, extra_env=None):
         except Exception as e:
             yield f'data: ✗ Ошибка: {e}\n\n'
         finally:
+            if proc.poll() is None:
+                proc.terminate()
             yield 'data: [END]\n\n'
 
     return Response(
