@@ -35,6 +35,17 @@ BOT_PYTHON = sys.executable
 # Облачный режим: нет локальных скриптов (Render, Railway и т.д.)
 IS_CLOUD = 'RENDER' in os.environ or platform.system() != 'Windows'
 
+# Runtime-фикс: на Python 3.14 файл okcrm_bot/selectors.py затеняет stdlib selectors.
+# Если старый деплой — переименовываем файл и патчим импорт в bot.py прямо при старте.
+_sel_old = BASE_DIR / 'okcrm_bot' / 'selectors.py'
+_sel_new = BASE_DIR / 'okcrm_bot' / 'bot_selectors.py'
+if _sel_old.exists() and not _sel_new.exists():
+    _sel_old.rename(_sel_new)
+    _bot_py = BASE_DIR / 'okcrm_bot' / 'bot.py'
+    _txt = _bot_py.read_text('utf-8')
+    _bot_py.write_text(_txt.replace('import selectors as sel', 'import bot_selectors as sel'), 'utf-8')
+    print('[startup-fix] selectors.py → bot_selectors.py, bot.py пропатчен', flush=True)
+
 
 def is_running():
     return _process is not None and _process.poll() is None
