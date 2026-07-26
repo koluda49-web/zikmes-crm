@@ -35,18 +35,47 @@ BOT_PYTHON = sys.executable
 # Облачный режим: нет локальных скриптов (Render, Railway и т.д.)
 IS_CLOUD = 'RENDER' in os.environ or platform.system() != 'Windows'
 
-# Автозагрузка service_account.json из переменной окружения GOOGLE_SA_JSON.
-# Позволяет не загружать ключ вручную после каждого деплоя.
-_sa_env = os.environ.get('GOOGLE_SA_JSON', '').strip()
-_sa_target = BASE_DIR / 'okcrm_bot' / 'service_account.json'
-if _sa_env and not _sa_target.exists():
-    try:
-        import json as _json
-        _sa_obj = _json.loads(_sa_env)
-        _sa_target.write_text(_json.dumps(_sa_obj, ensure_ascii=False, indent=2), encoding='utf-8')
-        print(f'[startup] service_account.json восстановлен из GOOGLE_SA_JSON ({_sa_obj.get("client_email", "?")})', flush=True)
-    except Exception as _e:
-        print(f'[startup] WARN: не удалось распарсить GOOGLE_SA_JSON: {_e}', flush=True)
+# Автовосстановление учётных данных из переменных окружения Render.
+# Позволяет не загружать файлы вручную после каждого деплоя.
+def _restore_from_env():
+    import json as _json, base64 as _b64
+
+    # 1) service_account.json из GOOGLE_SA_JSON (JSON-строка)
+    _sa_env = os.environ.get('GOOGLE_SA_JSON', '').strip()
+    _sa_target = BASE_DIR / 'okcrm_bot' / 'service_account.json'
+    if _sa_env and not _sa_target.exists():
+        try:
+            _sa_obj = _json.loads(_sa_env)
+            _sa_target.write_text(_json.dumps(_sa_obj, ensure_ascii=False, indent=2), encoding='utf-8')
+            print(f'[startup] service_account.json ← GOOGLE_SA_JSON ({_sa_obj.get("client_email","?")})', flush=True)
+        except Exception as _e:
+            print(f'[startup] WARN GOOGLE_SA_JSON: {_e}', flush=True)
+
+    # 2) okcrm_bot/storage_state.json из OKCRM_SESSION_B64
+    _okcrm_b64 = os.environ.get('OKCRM_SESSION_B64', '').strip()
+    _okcrm_target = BASE_DIR / 'okcrm_bot' / 'storage_state.json'
+    if _okcrm_b64 and not _okcrm_target.exists():
+        try:
+            _data = _b64.b64decode(_okcrm_b64 + '==').decode('utf-8')
+            _okcrm_target.write_text(_data, encoding='utf-8')
+            _n = len(_json.loads(_data).get('cookies', []))
+            print(f'[startup] okcrm storage_state.json ← OKCRM_SESSION_B64 ({_n} cookies)', flush=True)
+        except Exception as _e:
+            print(f'[startup] WARN OKCRM_SESSION_B64: {_e}', flush=True)
+
+    # 3) cloud_crm_state.json из CRM_SESSION_B64
+    _crm_b64 = os.environ.get('CRM_SESSION_B64', '').strip()
+    _crm_target = BASE_DIR / 'cloud_crm_state.json'
+    if _crm_b64 and not _crm_target.exists():
+        try:
+            _data = _b64.b64decode(_crm_b64 + '==').decode('utf-8')
+            _crm_target.write_text(_data, encoding='utf-8')
+            _n = len(_json.loads(_data).get('cookies', []))
+            print(f'[startup] cloud_crm_state.json ← CRM_SESSION_B64 ({_n} cookies)', flush=True)
+        except Exception as _e:
+            print(f'[startup] WARN CRM_SESSION_B64: {_e}', flush=True)
+
+_restore_from_env()
 
 # Runtime-фикс: на Python 3.14 файл okcrm_bot/selectors.py затеняет stdlib selectors.
 # Если старый деплой — переименовываем файл и патчим импорт в bot.py прямо при старте.
