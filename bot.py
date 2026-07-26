@@ -62,18 +62,28 @@ MAX_EMPTY_PAGES_IN_A_ROW = 2  # сколько подряд пустых стр�
 
 
 def load_config() -> dict:
-    if not CONFIG_FILE.exists():
+    config = {}
+    if CONFIG_FILE.exists():
+        for line in CONFIG_FILE.read_text(encoding="utf-8").splitlines():
+            line = line.strip()
+            if not line or line.startswith("#") or "=" not in line:
+                continue
+            key, value = line.split("=", 1)
+            config[key.strip()] = value.strip()
+    elif not IS_CLOUD:
         sys.exit(
             f"Не найден {CONFIG_FILE}.\n"
             f"Скопируйте config.example.txt в config.txt и заполните значения."
         )
-    config = {}
-    for line in CONFIG_FILE.read_text(encoding="utf-8").splitlines():
-        line = line.strip()
-        if not line or line.startswith("#") or "=" not in line:
-            continue
-        key, value = line.split("=", 1)
-        config[key.strip()] = value.strip()
+    # env vars перекрывают config.txt (в облаке — основной источник)
+    for key in [
+        'CRM_ORDERS_URL', 'GOOGLE_SHEET_WEBHOOK', 'OVERDUE_DAYS',
+        'PAID_STATUSES', 'ROUTE_DATE_FROM', 'ROUTE_DATE_TO',
+        'ROUTE_DATE_DAYS_BACK',
+    ]:
+        env_val = os.environ.get(key)
+        if env_val:
+            config[key] = env_val
     return config
 
 
