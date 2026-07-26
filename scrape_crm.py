@@ -233,17 +233,27 @@ def _find_pw_chromium():
     pw_root = os.environ.get(
         'PLAYWRIGHT_BROWSERS_PATH', '/opt/render/project/src/.pw-browsers'
     )
-    candidates = sorted(_glob.glob(
-        os.path.join(pw_root, 'chromium-*/chrome-linux/chrome')
-    ))
+    # Playwright 1.44+ uses chrome-linux-x64, older versions use chrome-linux
+    candidates = sorted(
+        _glob.glob(os.path.join(pw_root, 'chromium-*/chrome-linux-x64/chrome'))
+        + _glob.glob(os.path.join(pw_root, 'chromium-*/chrome-linux/chrome'))
+        + _glob.glob(os.path.join(pw_root, 'chromium-*/chrome-linux-arm64/chrome'))
+    )
+    print(f"   [MTS] PLAYWRIGHT_BROWSERS_PATH={pw_root}")
     if not candidates:
+        try:
+            entries = os.listdir(pw_root) if os.path.isdir(pw_root) else ['(директория не найдена)']
+            print(f"   [MTS] Содержимое .pw-browsers: {entries}")
+        except Exception:
+            pass
         return None, None
     binary = candidates[-1]
     try:
         out = _sp.check_output([binary, '--version'], stderr=_sp.DEVNULL, text=True)
         m = re.search(r'[\d]+\.[\d]+\.[\d]+\.[\d]+', out)
         return binary, (m.group(0) if m else None)
-    except Exception:
+    except Exception as e:
+        print(f"   [MTS] --version failed: {e}")
         return binary, None
 
 
