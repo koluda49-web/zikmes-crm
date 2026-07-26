@@ -283,6 +283,23 @@ def main():
         if config.IS_CLOUD else []
     )
 
+    if not os.path.exists(config.STORAGE_STATE_PATH):
+        print("=" * 60)
+        print("ОШИБКА: файл сессии не найден:")
+        print(f"  {config.STORAGE_STATE_PATH}")
+        print()
+        if config.IS_CLOUD:
+            print("Обновите env var OKCRM_STORAGE_STATE в Render.")
+            print("Запустите grab_session_from_cdp.py локально и скопируйте base64.")
+        else:
+            print("Нужно захватить сессию CRM и Google Drive:")
+            print("  1. Откройте Chrome с флагом --remote-debugging-port=9222")
+            print("     (или нажмите 'Захватить сессию' в дашборде)")
+            print("  2. Войдите на a.ok-crm.com и drive.google.com")
+            print("  3. Запустите: python grab_session_from_cdp.py")
+        print("=" * 60)
+        return
+
     with sync_playwright() as p:
         browser = p.chromium.launch(
             headless=not show_browser,
