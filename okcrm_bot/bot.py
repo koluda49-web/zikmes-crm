@@ -23,7 +23,11 @@ import config
 import selectors as sel
 import state_store
 from parse_notes import resolve_downpayment_amount
-import drive_browser
+import drive_utils
+
+_use_service_account = os.path.exists(config.GOOGLE_SERVICE_ACCOUNT_JSON)
+if not _use_service_account:
+    import drive_browser
 
 
 class OrderSkippedError(Exception):
@@ -92,7 +96,7 @@ def collect_order_ids(page) -> list:
     return unique_ids
 
 
-def process_order(page, order_id: str, dry_run: bool) -> None:
+def process_order(page, order_id: str, dry_run: bool, drive_service=None) -> None:
     page.goto(f"{config.BASE_URL}/order/view/{order_id}", wait_until="commit")
     page.wait_for_selector(sel.FIELD_PRICE, timeout=15000)
 
@@ -185,12 +189,19 @@ def process_order(page, order_id: str, dry_run: bool) -> None:
     if not local_files:
         raise RuntimeError(f"В скачанном архиве {zip_path} не найден файл .docx.")
 
-    print(f"[{order_id}] перехожу на Google Drive, дата='{order_date}'...")
-    folder_url = drive_browser.navigate_to_order_folder(page, order_date, order_id, surname)
-    print(f"[{order_id}] сейчас на Drive-странице: {folder_url}")
-    for local_path in local_files:
-        print(f"[{order_id}] загружаю файл {local_path}...")
-        drive_browser.upload_file(page, local_path)
+    print(f"[{order_id}] загружаю в Google Drive, дата='{order_date}'...")
+    if drive_service is not None:
+        folder_id = drive_utils.get_or_create_order_folder(drive_service, order_date, order_id, surname)
+        for local_path in local_files:
+            print(f"[{order_id}] загружаю файл {local_path}...")
+            drive_utils.upload_file(drive_service, local_path, folder_id)
+        folder_url = f"https://drive.google.com/drive/folders/{folder_id}"
+    else:
+        folder_url = drive_browser.navigate_to_order_folder(page, order_date, order_id, surname)
+        print(f"[{order_id}] сейчас на Drive-странице: {folder_url}")
+        for local_path in local_files:
+            print(f"[{order_id}] загружаю файл {local_path}...")
+            drive_browser.upload_file(page, local_path)
     print(f"[{order_id}] загрузка на Drive завершена")
 
     try:
@@ -313,21 +324,26 @@ def main():
         page = context.new_page()
         page.on("dialog", lambda dialog: dialog.accept())
 
-        print("Проверяю сессию Google Drive перед началом обработки...")
-        if not check_drive_session(page):
-            print("=" * 60)
-            print("ОШИБКА: сессия Google Drive не залогинена.")
-            if config.IS_CLOUD:
-                print("Обновите env var OKCRM_STORAGE_STATE в Render.")
-                print("Запустите grab_session_from_cdp.py локально и скопируйте base64.")
-            else:
-                print("1. Запустите Chrome с --remote-debugging-port=9222")
-                print("2. Войдите на a.ok-crm.com и drive.google.com")
-                print("3. Запустите: python grab_session_from_cdp.py")
-            print("=" * 60)
-            browser.close()
-            return
-        print("Сессия Google Drive в порядке, продолжаю.")
+        drive_service = None
+        if _use_service_account:
+            print("Используется сервисный аккаунт Google Drive API (без браузерных cookies).")
+            drive_service = drive_utils.get_drive_service()
+        else:
+            print("service_account.json не найден — проверяю сессию Google Drive в браузере...")
+            if not check_drive_session(page):
+                print("=" * 60)
+                print("ОШИБКА: сессия Google Drive не залогинена.")
+                if config.IS_CLOUD:
+                    print("Обновите env var OKCRM_STORAGE_STATE в Render.")
+                    print("Запустите grab_session_from_cdp.py локально и скопируйте base64.")
+                else:
+                    print("1. Запустите Chrome с --remote-debugging-port=9222")
+                    print("2. Войдите на a.ok-crm.com и drive.google.com")
+                    print("3. Запустите: python grab_session_from_cdp.py")
+                print("=" * 60)
+                browser.close()
+                return
+            print("Сессия Google Drive в порядке, продолжаю.")
 
         processed_count = 0
         if args.order_id:
@@ -359,7 +375,7 @@ def main():
                 break
 
             try:
-                process_order(page, order_id, dry_run=args.dry_run)
+                process_order(page, order_id, dry_run=args.dry_run, drive_service=drive_service)
                 processed_count += 1
                 if args.pause and not config.IS_CLOUD:
                     print(f"[{order_id}] пауза - посмотрите на страницу браузера сейчас")

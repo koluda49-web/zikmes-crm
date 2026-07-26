@@ -7,3 +7,6 @@ selenium
 beautifulsoup4
 webdriver-manager
 pandas
+google-api-python-client
+google-auth
+google-auth-httplib2
