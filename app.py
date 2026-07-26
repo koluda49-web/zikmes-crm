@@ -3,6 +3,7 @@ import os
 import platform
 import subprocess
 import threading
+import queue
 from pathlib import Path
 from flask import Flask, render_template, Response, jsonify, request, stream_with_context
 
@@ -64,9 +65,11 @@ def save_config_keys(updates: dict):
     CONFIG_FILE.write_text('\n'.join(result), encoding='utf-8')
 
 
-def _run_proc(cmd, cwd=None):
+def _run_proc(cmd, cwd=None, extra_env=None):
     global _process
     env = {**os.environ, 'PYTHONIOENCODING': 'utf-8', 'PYTHONUNBUFFERED': '1'}
+    if extra_env:
+        env.update(extra_env)
     with _process_lock:
         if is_running():
             return None
@@ -84,17 +87,33 @@ def _run_proc(cmd, cwd=None):
         return _process
 
 
-def sse_stream(cmd, label, cwd=None):
+def sse_stream(cmd, label, cwd=None, extra_env=None):
     @stream_with_context
     def generate():
-        proc = _run_proc(cmd, cwd=cwd)
+        proc = _run_proc(cmd, cwd=cwd, extra_env=extra_env)
         if proc is None:
             yield 'data: [ЗАНЯТО] Дождитесь завершения текущего процесса\n\n'
             return
         yield f'data: ▶ {label}\n\n'
-        try:
+
+        q = queue.Queue()
+
+        def _reader():
             for line in iter(proc.stdout.readline, ''):
-                yield f'data: {line.rstrip()}\n\n'
+                q.put(line)
+            q.put(None)
+
+        threading.Thread(target=_reader, daemon=True).start()
+
+        try:
+            while True:
+                try:
+                    line = q.get(timeout=20)
+                    if line is None:
+                        break
+                    yield f'data: {line.rstrip()}\n\n'
+                except queue.Empty:
+                    yield ': keepalive\n\n'
             proc.wait()
             code = proc.returncode
             if code == 0:
@@ -200,7 +219,14 @@ def salary_report():
 
 @app.route('/stream/scan')
 def stream_scan():
-    return sse_stream([sys.executable, 'bot.py'], 'Парсер просрочки CRM')
+    extra = {}
+    d_from = request.args.get('date_from', '').strip()
+    d_to   = request.args.get('date_to', '').strip()
+    if d_from:
+        extra['ROUTE_DATE_FROM'] = d_from
+    if d_to:
+        extra['ROUTE_DATE_TO'] = d_to
+    return sse_stream([sys.executable, 'bot.py'], 'Парсер просрочки CRM', extra_env=extra or None)
 
 
 @app.route('/stream/mts/<action>')

@@ -326,7 +326,7 @@
         <button class="btn btn-gray btn-sm" onclick="saveConfig()">💾</button>
       </div>
       <p class="save-note">💾 — сохранить даты в config.txt</p>
-      <button class="btn btn-green" onclick="runTask('/stream/scan')">
+      <button class="btn btn-green" onclick="runScan()">
         ▶ Запустить поиск и отправить в таблицу
       </button>
       <a class="btn btn-gray" href="https://docs.google.com/spreadsheets/d/1QUaCguZ1VKOOa7-SUQLaXy_0yaRaxegqPDCjXyDwm_4/edit?gid=503165976#gid=503165976" target="_blank" style="margin-top:4px">
@@ -760,6 +760,16 @@
       if (source) source.close();
       setBusy(false);
     });
+  }
+
+  function runScan() {
+    var from = document.getElementById('date-from').value.trim();
+    var to   = document.getElementById('date-to').value.trim();
+    var url  = '/stream/scan';
+    if (from || to) {
+      url += '?date_from=' + encodeURIComponent(from) + '&date_to=' + encodeURIComponent(to);
+    }
+    runTask(url);
   }
 
   function saveConfig() {
