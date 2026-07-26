@@ -396,11 +396,21 @@ def api_upload_session():
             'error': 'список "cookies" пуст — сессия не была захвачена',
         }), 400
 
-    # Снимаем env var до записи: иначе config.py бота при следующем запуске
-    # подсунет ему cloud_storage_state.json со старой сессией из Render env.
-    os.environ.pop('OKCRM_STORAGE_STATE', None)
+    # session_type='crm'  → cloud_crm_state.json (для root bot.py / дебиторов)
+    # session_type='okcrm' или отсутствует → okcrm_bot/storage_state.json
+    session_type = payload.get('session_type', 'okcrm')
 
-    target = Path(BOT_DIR) / 'storage_state.json'
+    if session_type == 'crm':
+        target = BASE_DIR / 'cloud_crm_state.json'
+        os.environ.pop('CRM_STORAGE_STATE', None)
+        label = 'cloud_crm_state.json'
+    else:
+        # Снимаем env var до записи: иначе config.py бота при следующем запуске
+        # подсунет ему cloud_storage_state.json со старой сессией из Render env.
+        os.environ.pop('OKCRM_STORAGE_STATE', None)
+        target = Path(BOT_DIR) / 'storage_state.json'
+        label = 'okcrm_bot/storage_state.json'
+
     try:
         target.parent.mkdir(parents=True, exist_ok=True)
         tmp = target.with_name(target.name + '.tmp')
@@ -419,7 +429,7 @@ def api_upload_session():
         'cookies': n,
         'origins': len(origins) if isinstance(origins, list) else 0,
         'message': (
-            f'Сессия сохранена: {n} cookies → okcrm_bot/storage_state.json. '
+            f'Сессия сохранена: {n} cookies → {label}. '
             'Активна до следующего передеплоя.'
         ),
     })
