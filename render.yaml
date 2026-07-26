@@ -18,9 +18,6 @@ services:
       # Playwright ищет браузеры по этому пути (установлены в build.sh)
       - key: PLAYWRIGHT_BROWSERS_PATH
         value: /opt/render/project/src/.pw-browsers
-      # Python версия — без пина requirements.txt могут взять несовместимый 3.13
-      - key: PYTHON_VERSION
-        value: "3.11.9"
       # Секреты — заполнить вручную в Render Dashboard после деплоя:
       - key: SECRET_KEY
         sync: false
