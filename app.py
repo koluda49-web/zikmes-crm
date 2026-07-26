@@ -435,6 +435,31 @@ def api_upload_session():
     })
 
 
+@app.route('/api/upload-service-account', methods=['POST'])
+@requires_auth
+def api_upload_service_account():
+    """Принимает содержимое service_account.json и сохраняет в okcrm_bot/.
+    Тело запроса: {"service_account": {...}} — JSON-объект сервисного аккаунта Google.
+    """
+    import json as _json
+    if not IS_CLOUD:
+        return jsonify({'ok': False, 'error': 'только для облачного режима'}), 403
+    payload = request.get_json(silent=True)
+    if not isinstance(payload, dict):
+        return jsonify({'ok': False, 'error': 'ожидался JSON-объект'}), 400
+    sa = payload.get('service_account')
+    if not isinstance(sa, dict) or 'type' not in sa:
+        return jsonify({'ok': False, 'error': 'нет поля service_account или неверный формат'}), 400
+    target = Path(BOT_DIR) / 'service_account.json'
+    try:
+        tmp = target.with_name(target.name + '.tmp')
+        tmp.write_text(_json.dumps(sa, ensure_ascii=False, indent=2), encoding='utf-8')
+        os.replace(str(tmp), str(target))
+    except Exception as e:
+        return jsonify({'ok': False, 'error': str(e)}), 500
+    return jsonify({'ok': True, 'message': f'service_account.json сохранён ({sa.get("client_email", "?")})'})
+
+
 if __name__ == '__main__':
     port = int(os.environ.get('PORT', 5000))
     if not IS_CLOUD:
