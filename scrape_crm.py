@@ -1042,10 +1042,15 @@ def cmd_fetch_report(task_url: str, external_driver=None, merge_fn=None, task_na
 
         if not task_name:
             print("   ⚠️  Не найден файл с названием задания (last_task_name.txt).")
-            if not IS_CLOUD:
+            if IS_CLOUD:
+                # В облаке нет input() — ищем последнее задание по префиксу
+                task_name = DEBTOR_TASK_NAME_PREFIX
+                print(f"   Облако: ищу последнее задание «{task_name}»...")
+            else:
                 input("   Нажми кнопку скачивания вручную, затем Enter: ")
-            selected_row = None
-        else:
+
+        selected_row = None
+        if task_name:
             print(f"   Ищу задание: «{task_name}»")
 
             # Ждём пока задание завершится (статус "Завершено" под названием)
