@@ -69,17 +69,23 @@ CONFIG_FILE = "config.txt"
 
 
 def load_config() -> dict:
-    """Читает config.txt (логин/пароль МТС) из той же папки, что и скрипт."""
+    """Читает config.txt, затем переменные окружения (env перекрывают файл)."""
     config = {}
-    if not os.path.exists(CONFIG_FILE):
-        return config
-    with open(CONFIG_FILE, "r", encoding="utf-8") as f:
-        for line in f:
-            line = line.strip()
-            if not line or line.startswith("#") or "=" not in line:
-                continue
-            key, value = line.split("=", 1)
-            config[key.strip()] = value.strip()
+    if os.path.exists(CONFIG_FILE):
+        with open(CONFIG_FILE, "r", encoding="utf-8") as f:
+            for line in f:
+                line = line.strip()
+                if not line or line.startswith("#") or "=" not in line:
+                    continue
+                key, value = line.split("=", 1)
+                config[key.strip()] = value.strip()
+    for key in [
+        'MTS_LOGIN', 'MTS_PASSWORD',
+        'DEBTOR_REGISTRY_WEBHOOK', 'DEBTOR_REGISTRY_SECRET',
+    ]:
+        val = os.environ.get(key)
+        if val:
+            config[key] = val
     return config
 
 
@@ -220,13 +226,28 @@ def send_debtor_call_results(rows: list[dict]):
 #  ЧАСТЬ 1 — Выгрузка из CRM
 # ============================================================
 
-def create_driver():
+def _find_pw_chromium():
+    """Ищет Playwright-установленный Chromium и возвращает (путь, версия)."""
+    import glob as _glob
+    import subprocess as _sp
+    pw_root = os.environ.get(
+        'PLAYWRIGHT_BROWSERS_PATH', '/opt/render/project/src/.pw-browsers'
+    )
+    candidates = sorted(_glob.glob(
+        os.path.join(pw_root, 'chromium-*/chrome-linux/chrome')
+    ))
+    if not candidates:
+        return None, None
+    binary = candidates[-1]
     try:
-        from webdriver_manager.chrome import ChromeDriverManager
-        service = Service(ChromeDriverManager().install())
-    except ImportError:
-        service = Service()
+        out = _sp.check_output([binary, '--version'], stderr=_sp.DEVNULL, text=True)
+        m = re.search(r'[\d]+\.[\d]+\.[\d]+\.[\d]+', out)
+        return binary, (m.group(0) if m else None)
+    except Exception:
+        return binary, None
 
+
+def create_driver():
     options = webdriver.ChromeOptions()
     options.add_argument("--disable-blink-features=AutomationControlled")
     options.add_experimental_option("excludeSwitches", ["enable-automation"])
@@ -242,20 +263,36 @@ def create_driver():
     }
 
     if IS_CLOUD:
-        # Headless-режим для облака
         options.add_argument("--headless=new")
         options.add_argument("--no-sandbox")
         options.add_argument("--disable-dev-shm-usage")
         options.add_argument("--disable-gpu")
         options.add_argument("--disable-setuid-sandbox")
         options.add_argument("--window-size=1600,1000")
+
+        # Используем Playwright-установленный Chromium как Chrome-бинарь для Selenium
+        chrome_binary, chrome_version = _find_pw_chromium()
+        if chrome_binary:
+            print(f"   [MTS] Chromium: {chrome_binary} (v{chrome_version or '?'})")
+            options.binary_location = chrome_binary
+        else:
+            print("   [MTS] ⚠ Playwright Chromium не найден, используем системный Chrome")
     else:
-        # Локально — сохраняем профиль с сессией МТС
         profile_dir = os.path.join(os.path.dirname(os.path.abspath(__file__)), "chrome_profile")
         os.makedirs(profile_dir, exist_ok=True)
         options.add_argument(f"--user-data-dir={profile_dir}")
+        chrome_version = None
 
     options.add_experimental_option("prefs", prefs)
+
+    try:
+        from webdriver_manager.chrome import ChromeDriverManager
+        if chrome_version:
+            service = Service(ChromeDriverManager(driver_version=chrome_version).install())
+        else:
+            service = Service(ChromeDriverManager().install())
+    except ImportError:
+        service = Service()
 
     driver = webdriver.Chrome(service=service, options=options)
     if not IS_CLOUD:
