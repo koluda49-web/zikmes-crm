@@ -11,15 +11,11 @@ import re
 
 import config
 
-# ---------- ПОДТВЕРЖДЕНО через playwright codegen ----------
-BTN_CREATE_NAME = "Создать"  # page.get_by_role("button", name="Создать")
-MENU_ITEM_FOLDER_PATTERN = re.compile("Новая папка")  # get_by_role("menuitem", name=...) - полное имя включает подсказку горячих клавиш, ищем частичное совпадение
-NEW_FOLDER_TEXTBOX_NAME = "Новая папка"  # get_by_role("textbox", name="Новая папка")
-# Кнопка подтверждения в диалоге создания папки называется так же "Создать",
-# как и основная кнопка - различаем по порядку/контексту в drive_browser.py.
-
-# ---------- ПОДТВЕРЖДЕНО через playwright codegen (2-я запись) ----------
-MENU_ITEM_UPLOAD_FILE_PATTERN = re.compile("Загрузить файл")  # get_by_role("menuitem", name=...) - частичное совпадение, т.к. полное имя включает подсказку горячих клавиш
+# Русский и английский интерфейс Drive (сервер в US показывает EN)
+_BTN_CREATE_NAMES = ["Создать", "New"]
+_MENU_FOLDER_PATTERNS = [re.compile("Новая папка"), re.compile("New folder")]
+_FOLDER_TEXTBOX_NAMES = ["Новая папка", "New folder"]
+_UPLOAD_FILE_PATTERNS = [re.compile("Загрузить файл"), re.compile("File upload"), re.compile("Upload files")]
 
 
 def month_name_ru(date_ddmmyyyy: str) -> str:
@@ -65,22 +61,44 @@ def open_folder_by_name(page, name: str) -> bool:
     return True
 
 
+def _click_first_matching_role(page, role: str, names, *, last=False, timeout=15000):
+    """Кликает первый найденный элемент по role из списка имён (RU/EN)."""
+    for name in names:
+        loc = page.get_by_role(role, name=name)
+        try:
+            loc.first.wait_for(state="visible", timeout=3000)
+            if last:
+                page.get_by_role(role, name=name).last.click(timeout=timeout)
+            else:
+                loc.first.click(timeout=timeout)
+            return
+        except Exception:
+            continue
+    raise RuntimeError(f"Не найден элемент role={role!r} с именем из {names}")
+
+
 def create_folder(page, name: str) -> None:
     """Создаёт новую папку с именем name в текущей открытой папке."""
-    # Даём странице (SPA) время на дорисовку панели инструментов после
-    # навигации в папку - без этого изредка (см. заказ 596773, 13.07.2026)
-    # кнопка "Создать" ещё не успевает появиться в DOM, и клик падает в
-    # таймаут, хотя по факту достаточно было чуть подождать.
     try:
         page.wait_for_load_state("networkidle", timeout=8000)
     except Exception:
-        pass  # не критично, продолжаем всё равно
-    page.get_by_role("button", name=BTN_CREATE_NAME).click(timeout=45000)
-    page.get_by_role("menuitem", name=MENU_ITEM_FOLDER_PATTERN).click()
-    page.get_by_role("textbox", name=NEW_FOLDER_TEXTBOX_NAME).fill(name)
-    # Кнопка подтверждения в диалоге - тоже "Создать", но это уже другой
-    # элемент (внутри диалога) - берём последний, т.к. он отрисовывается поверх.
-    page.get_by_role("button", name=BTN_CREATE_NAME).last.click()
+        pass
+    _click_first_matching_role(page, "button", _BTN_CREATE_NAMES, timeout=20000)
+    _click_first_matching_role(page, "menuitem", _MENU_FOLDER_PATTERNS)
+    # Текстовое поле для имени папки
+    textbox = None
+    for tb_name in _FOLDER_TEXTBOX_NAMES:
+        loc = page.get_by_role("textbox", name=tb_name)
+        try:
+            loc.wait_for(state="visible", timeout=3000)
+            textbox = loc
+            break
+        except Exception:
+            continue
+    if textbox is None:
+        raise RuntimeError("Не найдено текстовое поле для имени папки")
+    textbox.fill(name)
+    _click_first_matching_role(page, "button", _BTN_CREATE_NAMES, last=True, timeout=10000)
     page.wait_for_timeout(1500)
 
 
@@ -120,9 +138,9 @@ def navigate_to_order_folder(page, order_date_text: str, order_id: str, surname:
 
 def upload_file(page, local_path: str) -> None:
     """Загружает файл local_path в текущую открытую папку через диалог выбора файла."""
-    page.get_by_role("button", name=BTN_CREATE_NAME).click()
+    _click_first_matching_role(page, "button", _BTN_CREATE_NAMES, timeout=15000)
     with page.expect_file_chooser() as fc_info:
-        page.get_by_role("menuitem", name=MENU_ITEM_UPLOAD_FILE_PATTERN).click()
+        _click_first_matching_role(page, "menuitem", _UPLOAD_FILE_PATTERNS)
     file_chooser = fc_info.value
     file_chooser.set_files(local_path)
-    page.wait_for_timeout(3000)  # дать время на завершение загрузки
+    page.wait_for_timeout(3000)
