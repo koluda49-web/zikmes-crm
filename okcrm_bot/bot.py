@@ -239,12 +239,15 @@ def process_order(page, order_id: str, dry_run: bool, drive_service=None) -> Non
     except Exception as e:
         print(f"[{order_id}] не удалось удалить временные файлы (не критично): {e}")
 
+    print(f"[{order_id}] возвращаюсь на страницу заказа...")
     page.goto(f"{config.BASE_URL}/order/view/{order_id}", wait_until="commit")
     page.wait_for_selector(sel.FIELD_PRICE, timeout=15000)
 
     print(f"[{order_id}] открываю редактирование...")
     page.get_by_text(sel.BTN_EDIT_ORDER_NAME, exact=True).click()
+    print(f"[{order_id}] жду форму редактирования...")
     page.wait_for_selector(f"text={sel.STATUS_LABEL}", timeout=15000)
+    print(f"[{order_id}] форма открыта, обновляю пометку...")
 
     note_field = page.locator(sel.NOTE_TEXTAREA_CSS)
     if note_field.count() == 0:
@@ -259,6 +262,7 @@ def process_order(page, order_id: str, dry_run: bool, drive_service=None) -> Non
     save_button.wait_for(state="visible", timeout=10000)
     save_button.scroll_into_view_if_needed()
     page.wait_for_timeout(500)
+    print(f"[{order_id}] сохраняю...")
     save_button.click(force=True)
     try:
         page.wait_for_load_state("networkidle", timeout=20000)
@@ -266,13 +270,12 @@ def process_order(page, order_id: str, dry_run: bool, drive_service=None) -> Non
         pass
     page.wait_for_timeout(1500)
 
-    _save_error_screenshot(page, order_id, "after_save_click")
-
     edit_error_banner = page.locator(".alert-danger")
     if edit_error_banner.count() > 0:
         banner_text = edit_error_banner.first.inner_text().strip()
         print(f"[{order_id}] ВНИМАНИЕ: после клика 'Сохранить' на форме виден баннер ошибки: {banner_text}")
 
+    print(f"[{order_id}] проверяю статус...")
     page.goto(f"{config.BASE_URL}/order/view/{order_id}", wait_until="commit")
     page.wait_for_selector(sel.FIELD_PRICE, timeout=15000)
     status_value = page.locator(sel.FIELD_STATUS_VALUE).inner_text().strip()

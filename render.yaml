@@ -5,7 +5,7 @@ services:
     region: frankfurt
     plan: free
     buildCommand: bash build.sh
-    startCommand: gunicorn app:app --bind 0.0.0.0:$PORT --workers 1 --threads 4 --timeout 180
+    startCommand: gunicorn app:app --bind 0.0.0.0:$PORT --workers 1 --threads 4 --timeout 3600
     envVars:
       - key: CRM_ORDERS_URL
         value: https://a.ok-crm.com/order/index
