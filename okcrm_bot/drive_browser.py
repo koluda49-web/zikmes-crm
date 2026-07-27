@@ -190,6 +190,38 @@ def upload_file(page, local_path: str) -> None:
     print(f"  Файл передан через меню 'Создать'.")
 
 
+def upload_file_via_apps_script(script_url: str, folder_id: str, local_path: str, api_key: str = '') -> None:
+    """
+    Загружает файл через Google Apps Script (работает от имени пользователя,
+    использует квоту пользователя, не требует браузерной автоматизации).
+    """
+    import base64 as _b64
+    import requests as _req
+
+    with open(local_path, 'rb') as f:
+        content_b64 = _b64.b64encode(f.read()).decode('ascii')
+
+    file_name = os.path.basename(local_path)
+    print(f"  Загружаю {file_name} через Google Apps Script...")
+
+    params = {'key': api_key} if api_key else {}
+    resp = _req.post(
+        script_url,
+        params=params,
+        json={'folderId': folder_id, 'fileName': file_name, 'fileContent': content_b64},
+        timeout=120,
+    )
+
+    if resp.status_code != 200:
+        raise RuntimeError(f"Apps Script upload failed: {resp.status_code} — {resp.text[:300]}")
+
+    result = resp.json()
+    if not result.get('ok'):
+        raise RuntimeError(f"Apps Script error: {result.get('error', 'unknown')}")
+
+    print(f"  Файл загружен: {file_name} (id={result.get('fileId')})")
+
+
 def upload_file_via_token(page, folder_id: str, local_path: str) -> None:
     """
     Загружает файл в папку Drive через скрытый input[type=file] в Drive SPA.

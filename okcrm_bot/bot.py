@@ -190,33 +190,46 @@ def process_order(page, order_id: str, dry_run: bool, drive_service=None) -> Non
         raise RuntimeError(f"В скачанном архиве {zip_path} не найден файл .docx.")
 
     print(f"[{order_id}] загружаю в Google Drive, дата='{order_date}'...")
+    apps_script_url = os.environ.get('GOOGLE_APPS_SCRIPT_URL', '')
+    apps_script_key = os.environ.get('GOOGLE_APPS_SCRIPT_KEY', '')
+
     if drive_service is not None:
-        # SA создаёт папки через API (без квоты, быстро)
+        # SA создаёт папки через API (без квоты)
         folder_id = drive_utils.get_or_create_order_folder(drive_service, order_date, order_id, surname)
         folder_url = f"https://drive.google.com/drive/folders/{folder_id}"
         print(f"[{order_id}] папка создана/найдена: {folder_url}")
-        # Навигируем через dblclick-иерархию (как browser-only) — даёт Drive SPA нужный контекст.
-        # Прямой goto на SA-папку не инициализирует toolbar нормально в headless-режиме.
-        date_only = drive_browser.extract_date_only(order_date)
-        month = drive_browser.month_name_ru(date_only)
-        order_folder_name = f"{order_id} {surname}".strip()
-        page.goto(f"https://drive.google.com/drive/folders/{config.PARENT_DRIVE_FOLDER_ID}")
-        try:
-            page.wait_for_load_state("networkidle", timeout=12000)
-        except Exception:
-            pass
-        page.wait_for_timeout(2000)
-        print(f"[{order_id}] навигирую в Drive: {month} → {date_only} → {order_folder_name}")
-        drive_browser.open_folder_by_name(page, month)
-        drive_browser.open_folder_by_name(page, date_only)
-        drive_browser.open_folder_by_name(page, order_folder_name)
-        print(f"[{order_id}] Drive URL: {page.url}")
+
+        if apps_script_url:
+            # Apps Script: надёжно, использует квоту пользователя, без браузерной автоматизации
+            for local_path in local_files:
+                print(f"[{order_id}] загружаю файл {local_path}...")
+                drive_browser.upload_file_via_apps_script(apps_script_url, folder_id, local_path, apps_script_key)
+        else:
+            # Browser fallback: навигируем через Drive UI (может не работать в headless)
+            date_only = drive_browser.extract_date_only(order_date)
+            month = drive_browser.month_name_ru(date_only)
+            order_folder_name = f"{order_id} {surname}".strip()
+            page.goto(f"https://drive.google.com/drive/folders/{config.PARENT_DRIVE_FOLDER_ID}")
+            try:
+                page.wait_for_load_state("networkidle", timeout=12000)
+            except Exception:
+                pass
+            page.wait_for_timeout(2000)
+            print(f"[{order_id}] навигирую в Drive: {month} → {date_only} → {order_folder_name}")
+            drive_browser.open_folder_by_name(page, month)
+            drive_browser.open_folder_by_name(page, date_only)
+            drive_browser.open_folder_by_name(page, order_folder_name)
+            print(f"[{order_id}] Drive URL: {page.url}")
+            for local_path in local_files:
+                print(f"[{order_id}] загружаю файл {local_path}...")
+                drive_browser.upload_file(page, local_path)
     else:
         folder_url = drive_browser.navigate_to_order_folder(page, order_date, order_id, surname)
         print(f"[{order_id}] Drive URL: {folder_url}")
-    for local_path in local_files:
-        print(f"[{order_id}] загружаю файл {local_path}...")
-        drive_browser.upload_file(page, local_path)
+        for local_path in local_files:
+            print(f"[{order_id}] загружаю файл {local_path}...")
+            drive_browser.upload_file(page, local_path)
+
     print(f"[{order_id}] загрузка на Drive завершена")
 
     try:
@@ -356,23 +369,27 @@ def main():
 
         drive_service = None
         if _sa_for_folders:
-            # Сервисный аккаунт создаёт папки (без квоты); браузер загружает файлы
+            # Сервисный аккаунт создаёт папки (без квоты)
             drive_service = drive_utils.get_drive_service()
             if args.dry_run:
                 print("Dry-run режим: Drive API для папок готов, загрузка файлов пропускается.")
             else:
-                print("Drive: сервисный аккаунт для папок + браузерная сессия для загрузки файлов.")
-                if not check_drive_session(page):
-                    print("=" * 60)
-                    print("ОШИБКА: сессия Google Drive не залогинена (нужна для загрузки файлов).")
-                    if config.IS_CLOUD:
-                        print("Обновите env var OKCRM_STORAGE_STATE в Render.")
-                    else:
-                        print("Войдите на drive.google.com и перезапустите grab_session_from_cdp.py")
-                    print("=" * 60)
-                    browser.close()
-                    return
-                print("Сессия Google Drive в порядке, продолжаю.")
+                _using_apps_script = bool(os.environ.get('GOOGLE_APPS_SCRIPT_URL', ''))
+                if _using_apps_script:
+                    print("Drive: сервисный аккаунт для папок + Google Apps Script для загрузки файлов.")
+                else:
+                    print("Drive: сервисный аккаунт для папок + браузерная сессия для загрузки файлов.")
+                    if not check_drive_session(page):
+                        print("=" * 60)
+                        print("ОШИБКА: сессия Google Drive не залогинена (нужна для загрузки файлов).")
+                        if config.IS_CLOUD:
+                            print("Обновите env var OKCRM_STORAGE_STATE в Render.")
+                        else:
+                            print("Войдите на drive.google.com и перезапустите grab_session_from_cdp.py")
+                        print("=" * 60)
+                        browser.close()
+                        return
+                    print("Сессия Google Drive в порядке, продолжаю.")
         elif args.dry_run:
             print("Dry-run режим: проверка сессии Google Drive пропускается.")
         else:
