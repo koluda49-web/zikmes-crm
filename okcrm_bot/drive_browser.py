@@ -166,79 +166,35 @@ def upload_file(page, local_path: str) -> None:
 
 def upload_file_via_token(page, folder_id: str, local_path: str) -> None:
     """
-    Перехватывает OAuth Bearer-токен из запросов браузерной сессии Drive,
-    затем загружает файл напрямую через Drive REST API (минуя UI).
-    Использует квоту пользователя, а не сервисного аккаунта.
-
-    Навигирует к РОДИТЕЛЬСКОЙ папке (которую пользователь владеет),
-    чтобы гарантированно получить токен из googleapis.com запросов Drive SPA.
+    Загружает файл в папку Drive через скрытый input[type=file] в Drive SPA.
+    Playwright умеет устанавливать файлы напрямую на скрытые инпуты —
+    кнопка «Создать»/«New» не нужна.
     """
-    import json as _json
-    import requests as _req
-
-    captured_tokens = []
-
-    def _on_request(request):
-        auth = request.headers.get('authorization', '')
-        if auth.startswith('Bearer '):
-            token = auth[7:]
-            if token not in captured_tokens:
-                captured_tokens.append(token)
-
-    page.on('request', _on_request)
+    page.goto(f"https://drive.google.com/drive/folders/{folder_id}")
     try:
-        # Навигируем к родительской папке (которую ПОЛЬЗОВАТЕЛЬ владеет),
-        # чтобы Drive SPA загрузился и сделал API-запросы с Bearer-токеном.
-        # SA-созданные подпапки не дают прямого доступа браузеру по URL.
-        page.goto(f"https://drive.google.com/drive/folders/{config.PARENT_DRIVE_FOLDER_ID}")
-        try:
-            page.wait_for_load_state("networkidle", timeout=12000)
-        except Exception:
-            pass
-        page.wait_for_timeout(2000)
-    finally:
-        page.remove_listener('request', _on_request)
+        page.wait_for_load_state("networkidle", timeout=15000)
+    except Exception:
+        pass
+    page.wait_for_timeout(3000)
 
-    if not captured_tokens:
+    if "drive.google.com" not in page.url:
         raise RuntimeError(
-            "Не удалось перехватить OAuth-токен из сессии Google Drive. "
+            f"Drive не загрузился — текущий URL: {page.url}. "
             "Обновите storage_state.json через кнопку «Загрузить сессию»."
         )
 
-    access_token = captured_tokens[-1]
-    print(f"  OAuth-токен получен ({len(access_token)} симв.), загружаю через Drive API...")
+    file_inputs = page.locator('input[type="file"]')
+    n = file_inputs.count()
+    print(f"  Drive UI: найдено {n} input[type=file] элемент(ов)")
 
-    file_name = os.path.basename(local_path)
-    mime_type = 'application/vnd.openxmlformats-officedocument.wordprocessingml.document'
-    metadata = {"name": file_name, "parents": [folder_id]}
-
-    with open(local_path, 'rb') as f:
-        file_bytes = f.read()
-
-    boundary = 'drive_upload_boundary_zikmes'
-    meta_json = _json.dumps(metadata, ensure_ascii=False).encode('utf-8')
-    body = (
-        f'--{boundary}\r\nContent-Type: application/json; charset=UTF-8\r\n\r\n'.encode() +
-        meta_json + b'\r\n' +
-        f'--{boundary}\r\nContent-Type: {mime_type}\r\n\r\n'.encode() +
-        file_bytes +
-        f'\r\n--{boundary}--'.encode()
-    )
-
-    resp = _req.post(
-        'https://www.googleapis.com/upload/drive/v3/files?uploadType=multipart',
-        headers={
-            'Authorization': f'Bearer {access_token}',
-            'Content-Type': f'multipart/related; boundary={boundary}',
-        },
-        data=body,
-        timeout=120,
-    )
-
-    if resp.status_code not in (200, 201):
+    if n == 0:
         raise RuntimeError(
-            f"Drive API upload failed: {resp.status_code} — {resp.text[:500]}"
+            "Drive UI не показал input[type=file]. "
+            "Возможно Drive загрузился не полностью — попробуйте ещё раз."
         )
 
-    uploaded = resp.json()
-    print(f"  Файл загружен: {file_name} (id={uploaded.get('id')})")
+    file_name = os.path.basename(local_path)
+    print(f"  Загружаю {file_name} через file input...")
+    file_inputs.first.set_input_files(local_path)
+    # Ждём прогресс-бар загрузки и завершения
+    page.wait_for_timeout(10000)
