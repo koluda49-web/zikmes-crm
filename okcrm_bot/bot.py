@@ -464,10 +464,13 @@ def main():
                 screenshot_path = _save_error_screenshot(page, order_id, "unexpected")
                 state_store.log_error(order_id, "unexpected", f"{e} | скриншот: {screenshot_path}")
                 print(f"[{order_id}] ОШИБКА: {e}")
-            # Clear page between orders to release Chromium renderer memory
+            # Recycle the page between orders to fully release Chromium renderer memory.
+            # Closing + reopening is much more effective than about:blank on Render free tier (512 MB).
             if config.IS_CLOUD:
                 try:
-                    page.goto("about:blank", wait_until="commit", timeout=5000)
+                    page.close()
+                    page = context.new_page()
+                    page.on("dialog", lambda dialog: dialog.accept())
                 except Exception:
                     pass
             time.sleep(config.ACTION_DELAY_SECONDS)
