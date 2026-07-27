@@ -265,12 +265,18 @@ def check_drive_session(page) -> bool:
         page.wait_for_load_state("networkidle", timeout=8000)
     except PlaywrightTimeoutError:
         pass
-    logged_in_marker = page.get_by_text("Мой диск", exact=False)
-    try:
-        logged_in_marker.wait_for(state="visible", timeout=5000)
-        return True
-    except PlaywrightTimeoutError:
+    # Если редиректнуло на страницу логина — сессия истекла
+    if "accounts.google.com" in page.url:
         return False
+    # Проверяем наличие индикатора входа: русский или английский интерфейс
+    for text in ["Мой диск", "My Drive"]:
+        try:
+            page.get_by_text(text, exact=False).wait_for(state="visible", timeout=3000)
+            return True
+        except PlaywrightTimeoutError:
+            continue
+    # Если всё ещё на drive.google.com — считаем что залогинены
+    return "drive.google.com" in page.url
 
 
 def main():
@@ -327,6 +333,8 @@ def main():
         if _use_service_account:
             print("Используется сервисный аккаунт Google Drive API (без браузерных cookies).")
             drive_service = drive_utils.get_drive_service()
+        elif args.dry_run:
+            print("Dry-run режим: проверка сессии Google Drive пропускается.")
         else:
             print("Загрузка в Drive через браузерную сессию — проверяю сессию Google Drive...")
             if not check_drive_session(page):
