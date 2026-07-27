@@ -32,6 +32,21 @@ _process_lock = threading.Lock()
 BOT_DIR    = str(BASE_DIR / 'okcrm_bot')
 BOT_PYTHON = sys.executable
 
+
+def _kill_tree(proc):
+    """Terminate the subprocess and all its children (including Chrome/Chromium)."""
+    try:
+        if hasattr(os, 'killpg') and hasattr(os, 'getpgid'):
+            import signal
+            os.killpg(os.getpgid(proc.pid), signal.SIGTERM)
+        else:
+            proc.terminate()
+    except Exception:
+        try:
+            proc.terminate()
+        except Exception:
+            pass
+
 # Облачный режим: нет локальных скриптов (Render, Railway и т.д.)
 IS_CLOUD = 'RENDER' in os.environ or platform.system() != 'Windows'
 
@@ -149,6 +164,9 @@ def _run_proc(cmd, cwd=None, extra_env=None):
             bufsize=1,
             cwd=cwd or str(BASE_DIR),
             env=env,
+            # On Linux (Render): create a new process group so _kill_tree()
+            # can terminate Chrome children alongside the Python wrapper.
+            preexec_fn=os.setsid if hasattr(os, 'setsid') else None,
         )
         return _process
 
@@ -186,12 +204,22 @@ def sse_stream(cmd, label, cwd=None, extra_env=None):
                 yield 'data: ✓ Завершено успешно\n\n'
             else:
                 yield f'data: ✗ Завершено с ошибкой (код {code})\n\n'
+        except GeneratorExit:
+            pass  # client disconnected — don't yield, just clean up below
         except Exception as e:
-            yield f'data: ✗ Ошибка: {e}\n\n'
+            try:
+                yield f'data: ✗ Ошибка: {e}\n\n'
+            except GeneratorExit:
+                pass
         finally:
             if proc.poll() is None:
-                proc.terminate()
+                _kill_tree(proc)
+        # [END] is outside finally so GeneratorExit from client disconnect won't
+        # trigger "RuntimeError: generator ignored GeneratorExit"
+        try:
             yield 'data: [END]\n\n'
+        except GeneratorExit:
+            pass
 
     return Response(
         generate(),
