@@ -191,20 +191,32 @@ def process_order(page, order_id: str, dry_run: bool, drive_service=None) -> Non
 
     print(f"[{order_id}] загружаю в Google Drive, дата='{order_date}'...")
     if drive_service is not None:
-        # Сервисный аккаунт создаёт папки (metadata, без quota)
+        # SA создаёт папки через API (без квоты, быстро)
         folder_id = drive_utils.get_or_create_order_folder(drive_service, order_date, order_id, surname)
         folder_url = f"https://drive.google.com/drive/folders/{folder_id}"
-        print(f"[{order_id}] папка создана: {folder_url}")
-        # OAuth-токен из браузерной сессии → загрузка через Drive REST API (без UI)
-        for local_path in local_files:
-            print(f"[{order_id}] загружаю файл {local_path}...")
-            drive_browser.upload_file_via_token(page, folder_id, local_path)
+        print(f"[{order_id}] папка создана/найдена: {folder_url}")
+        # Навигируем через dblclick-иерархию (как browser-only) — даёт Drive SPA нужный контекст.
+        # Прямой goto на SA-папку не инициализирует toolbar нормально в headless-режиме.
+        date_only = drive_browser.extract_date_only(order_date)
+        month = drive_browser.month_name_ru(date_only)
+        order_folder_name = f"{order_id} {surname}".strip()
+        page.goto(f"https://drive.google.com/drive/folders/{config.PARENT_DRIVE_FOLDER_ID}")
+        try:
+            page.wait_for_load_state("networkidle", timeout=12000)
+        except Exception:
+            pass
+        page.wait_for_timeout(2000)
+        print(f"[{order_id}] навигирую в Drive: {month} → {date_only} → {order_folder_name}")
+        drive_browser.open_folder_by_name(page, month)
+        drive_browser.open_folder_by_name(page, date_only)
+        drive_browser.open_folder_by_name(page, order_folder_name)
+        print(f"[{order_id}] Drive URL: {page.url}")
     else:
         folder_url = drive_browser.navigate_to_order_folder(page, order_date, order_id, surname)
-        print(f"[{order_id}] сейчас на Drive-странице: {folder_url}")
-        for local_path in local_files:
-            print(f"[{order_id}] загружаю файл {local_path}...")
-            drive_browser.upload_file(page, local_path)
+        print(f"[{order_id}] Drive URL: {folder_url}")
+    for local_path in local_files:
+        print(f"[{order_id}] загружаю файл {local_path}...")
+        drive_browser.upload_file(page, local_path)
     print(f"[{order_id}] загрузка на Drive завершена")
 
     try:

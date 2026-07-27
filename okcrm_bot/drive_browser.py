@@ -148,8 +148,33 @@ def navigate_to_order_folder(page, order_date_text: str, order_id: str, surname:
 
 
 def upload_file(page, local_path: str) -> None:
-    """Загружает файл local_path в текущую открытую папку через диалог выбора файла."""
-    btn_name = _wait_for_create_button(page, timeout_ms=15000)
+    """
+    Загружает файл local_path в текущую открытую папку.
+    Сначала пробует через скрытый input[type=file] (надёжнее),
+    fallback — через кнопку «Создать»/«New» и меню.
+    """
+    file_name = os.path.basename(local_path)
+
+    # Метод 1: прямо через скрытый input[type=file]
+    try:
+        page.wait_for_load_state("networkidle", timeout=8000)
+    except Exception:
+        pass
+    page.wait_for_timeout(1000)
+
+    file_inputs = page.locator('input[type="file"]')
+    n = file_inputs.count()
+    print(f"  input[type=file] на странице: {n}")
+    if n > 0:
+        print(f"  Загружаю {file_name} через file input...")
+        file_inputs.first.set_input_files(local_path)
+        page.wait_for_timeout(10000)
+        print(f"  Файл передан через file input.")
+        return
+
+    # Метод 2: через кнопку «Создать»/«New» → меню → file chooser
+    print(f"  input[type=file] не найден, пробую через кнопку 'Создать'...")
+    btn_name = _wait_for_create_button(page, timeout_ms=20000)
     page.get_by_role("button", name=btn_name).first.click(timeout=15000)
     with page.expect_file_chooser() as fc_info:
         for pattern in _UPLOAD_FILE_PATTERNS:
@@ -161,7 +186,8 @@ def upload_file(page, local_path: str) -> None:
                 continue
     file_chooser = fc_info.value
     file_chooser.set_files(local_path)
-    page.wait_for_timeout(3000)
+    page.wait_for_timeout(5000)
+    print(f"  Файл передан через меню 'Создать'.")
 
 
 def upload_file_via_token(page, folder_id: str, local_path: str) -> None:
