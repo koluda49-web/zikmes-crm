@@ -169,6 +169,9 @@ def upload_file_via_token(page, folder_id: str, local_path: str) -> None:
     Перехватывает OAuth Bearer-токен из запросов браузерной сессии Drive,
     затем загружает файл напрямую через Drive REST API (минуя UI).
     Использует квоту пользователя, а не сервисного аккаунта.
+
+    Навигирует к РОДИТЕЛЬСКОЙ папке (которую пользователь владеет),
+    чтобы гарантированно получить токен из googleapis.com запросов Drive SPA.
     """
     import json as _json
     import requests as _req
@@ -184,7 +187,10 @@ def upload_file_via_token(page, folder_id: str, local_path: str) -> None:
 
     page.on('request', _on_request)
     try:
-        page.goto(f"https://drive.google.com/drive/folders/{folder_id}")
+        # Навигируем к родительской папке (которую ПОЛЬЗОВАТЕЛЬ владеет),
+        # чтобы Drive SPA загрузился и сделал API-запросы с Bearer-токеном.
+        # SA-созданные подпапки не дают прямого доступа браузеру по URL.
+        page.goto(f"https://drive.google.com/drive/folders/{config.PARENT_DRIVE_FOLDER_ID}")
         try:
             page.wait_for_load_state("networkidle", timeout=12000)
         except Exception:
@@ -200,7 +206,7 @@ def upload_file_via_token(page, folder_id: str, local_path: str) -> None:
         )
 
     access_token = captured_tokens[-1]
-    print(f"  OAuth-токен получен, загружаю через Drive API...")
+    print(f"  OAuth-токен получен ({len(access_token)} симв.), загружаю через Drive API...")
 
     file_name = os.path.basename(local_path)
     mime_type = 'application/vnd.openxmlformats-officedocument.wordprocessingml.document'
