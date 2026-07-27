@@ -25,9 +25,8 @@ import state_store
 from parse_notes import resolve_downpayment_amount
 import drive_utils
 
-_use_service_account = os.path.exists(config.GOOGLE_SERVICE_ACCOUNT_JSON)
-if not _use_service_account:
-    import drive_browser
+_use_service_account = False  # service account has no storage quota — always use browser session
+import drive_browser
 
 
 class OrderSkippedError(Exception):
@@ -329,7 +328,7 @@ def main():
             print("Используется сервисный аккаунт Google Drive API (без браузерных cookies).")
             drive_service = drive_utils.get_drive_service()
         else:
-            print("service_account.json не найден — проверяю сессию Google Drive в браузере...")
+            print("Загрузка в Drive через браузерную сессию — проверяю сессию Google Drive...")
             if not check_drive_session(page):
                 print("=" * 60)
                 print("ОШИБКА: сессия Google Drive не залогинена.")
