@@ -311,8 +311,11 @@ def main():
     show_browser = (args.dry_run or args.headed) and not config.IS_CLOUD
 
     _cloud_args = (
-        ['--no-sandbox', '--disable-dev-shm-usage', '--disable-gpu', '--disable-setuid-sandbox']
-        if config.IS_CLOUD else []
+        [
+            '--no-sandbox', '--disable-dev-shm-usage', '--disable-gpu', '--disable-setuid-sandbox',
+            '--disable-blink-features=AutomationControlled',  # скрываем признаки автоматизации
+        ]
+        if config.IS_CLOUD else ['--disable-blink-features=AutomationControlled']
     )
 
     if not os.path.exists(config.STORAGE_STATE_PATH):
@@ -341,6 +344,12 @@ def main():
         context = browser.new_context(
             storage_state=config.STORAGE_STATE_PATH,
             viewport={"width": 1600, "height": 1000},
+            # Реальный user-agent Chrome — снижает вероятность детекции headless
+            user_agent=(
+                "Mozilla/5.0 (Windows NT 10.0; Win64; x64) "
+                "AppleWebKit/537.36 (KHTML, like Gecko) "
+                "Chrome/125.0.0.0 Safari/537.36"
+            ),
         )
         page = context.new_page()
         page.on("dialog", lambda dialog: dialog.accept())
