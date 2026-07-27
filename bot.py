@@ -151,7 +151,7 @@ MAX_PAGES = 300  # защита от бесконечного перебора, 
 PROGRESS_EVERY_N_PAGES = 5
 
 
-def collect_candidate_orders(page, base_url: str, route_date_range: str = None) -> list:
+def collect_candidate_orders(page, base_url: str, route_date_range: str = None, context=None) -> list:
     """
     Возвращает список словарей {"order_id": ..., "phone": ...} из
     отфильтрованного списка заказов (Метод оплаты=Расчетный счет,
@@ -177,6 +177,17 @@ def collect_candidate_orders(page, base_url: str, route_date_range: str = None) 
                     f"и перебираются все заказы, а не только отфильтрованные)."
                 )
                 break
+
+            # Пересоздаём вкладку каждые 50 страниц в облаке, чтобы не рос
+            # расход памяти renderer-процесса
+            if IS_CLOUD and context is not None and page_num % 50 == 0:
+                try:
+                    page.close()
+                    page = context.new_page()
+                    page.on("dialog", lambda d: d.accept())
+                    print(f"  [mem] Вкладка пересоздана на странице {page_num}")
+                except Exception as _e:
+                    print(f"  [mem] Ошибка пересоздания вкладки: {_e}")
 
             url = sel.build_orders_url(base_url, page=page_num, route_date_range=route_date_range)
             if page_num % PROGRESS_EVERY_N_PAGES == 0 or page_num == 1:
@@ -401,7 +412,16 @@ def main():
         if not check_crm_session(page, orders_url):
             wait_for_manual_login(page, orders_url)
 
-        candidates = collect_candidate_orders(page, orders_url, route_date_range)
+        candidates = collect_candidate_orders(page, orders_url, route_date_range, context=context)
+
+        # collect_candidate_orders мог пересоздать вкладку внутри себя (облако,
+        # каждые 50 страниц) — тогда наш локальный `page` уже закрыт.
+        try:
+            if page.is_closed():
+                page = context.new_page()
+                page.on("dialog", lambda d: d.accept())
+        except Exception as _reopen_exc:
+            print(f"  [mem] Не удалось восстановить вкладку после сбора списка: {_reopen_exc}")
 
         results_buffer = []
         processed = 0

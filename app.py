@@ -154,6 +154,13 @@ def _run_proc(cmd, cwd=None, extra_env=None):
     with _process_lock:
         if is_running():
             return None
+        # Сигнальные файлы паузы от прошлого запуска убираем, иначе дашборд
+        # покажет «Продолжить» сразу, а скрипт продолжит мгновенно.
+        for _f in (BASE_DIR / '.bot_paused', BASE_DIR / '.bot_resume'):
+            try:
+                _f.unlink(missing_ok=True)
+            except Exception:
+                pass
         _process = subprocess.Popen(
             cmd,
             stdout=subprocess.PIPE,
@@ -214,6 +221,13 @@ def sse_stream(cmd, label, cwd=None, extra_env=None):
         finally:
             if proc.poll() is None:
                 _kill_tree(proc)
+            # Процесс закончился (или убит) — снимаем флаг паузы,
+            # чтобы кнопка «Продолжить» не висела в дашборде.
+            for _f in (BASE_DIR / '.bot_paused', BASE_DIR / '.bot_resume'):
+                try:
+                    _f.unlink(missing_ok=True)
+                except Exception:
+                    pass
         # [END] is outside finally so GeneratorExit from client disconnect won't
         # trigger "RuntimeError: generator ignored GeneratorExit"
         try:
@@ -281,6 +295,37 @@ def api_stop():
         _process.terminate()
         return jsonify({'ok': True})
     return jsonify({'ok': False})
+
+
+PAUSE_FILE  = BASE_DIR / '.bot_paused'
+RESUME_FILE = BASE_DIR / '.bot_resume'
+
+
+@app.route('/api/resume', methods=['POST'])
+@requires_auth
+def api_resume():
+    """Сигнал приостановленному подпроцессу: продолжай (кнопка «▶ Продолжить»)."""
+    if not is_running():
+        return jsonify({'ok': False, 'error': 'процесс не запущен'})
+    try:
+        RESUME_FILE.touch()
+    except Exception as e:
+        return jsonify({'ok': False, 'error': str(e)}), 500
+    return jsonify({'ok': True})
+
+
+@app.route('/api/pause-state')
+@requires_auth
+def api_pause_state():
+    """Стоит ли скрипт сейчас на паузе и какое действие ждёт от человека."""
+    paused = PAUSE_FILE.exists()
+    msg = ''
+    if paused:
+        try:
+            msg = PAUSE_FILE.read_text(encoding='utf-8').strip()
+        except Exception:
+            pass
+    return jsonify({'paused': paused, 'message': msg, 'running': is_running()})
 
 
 @app.route('/api/config', methods=['POST'])

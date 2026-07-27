@@ -44,6 +44,29 @@
   .badge.running { color: #f59e0b; border-color: #f59e0b; animation: pulse 1.5s infinite; }
   @keyframes pulse { 0%,100%{opacity:1} 50%{opacity:.6} }
 
+  /* ===== БЫСТРЫЙ ДОСТУП (панель под шапкой) ===== */
+  .quick-bar {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 8px;
+    margin-bottom: 14px;
+  }
+  .quick-bar a {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    padding: 8px 14px;
+    background: #252b3d;
+    border: 1px solid #2d3550;
+    border-radius: 10px;
+    color: #c8d0e7;
+    text-decoration: none;
+    font-size: 13px;
+    font-weight: 600;
+    transition: border-color .15s, color .15s;
+  }
+  .quick-bar a:hover { border-color: #6366f1; color: #e8eaf6; }
+
   /* ===== ВКЛАДКИ ===== */
   .tabs-nav {
     display: flex;
@@ -301,6 +324,12 @@
   <div class="badge" id="badge">Готов</div>
 </header>
 
+<!-- ===== БЫСТРЫЙ ДОСТУП ===== -->
+<div class="quick-bar">
+  <a href="{{ cfg.get('CRM_ORDERS_URL', 'https://a.ok-crm.com/order/index') }}" target="_blank">📋 Рассрочки в ЦРМ</a>
+  <a href="https://drive.google.com/drive/folders/1ogcJIQiZJxK9yh3mjZ7mdwVDea9DKn49" target="_blank">📁 Рассрочки на Диске</a>
+</div>
+
 <!-- ===== ВКЛАДКИ ===== -->
 <div class="tabs-nav">
   <button class="tab-btn active" data-tab="debtors">👤 Должники</button>
@@ -365,6 +394,7 @@
     <div class="term-header">
       <span>📟 Вывод процесса</span>
       <div class="actions">
+        <button class="btn btn-green btn-sm" id="resume-btn-debtors" onclick="resumeBot()" style="display:none">▶ Продолжить</button>
         <button class="btn btn-red btn-sm" id="btn-stop" onclick="stopTask()" style="display:none">■ Стоп</button>
         <button class="btn btn-gray btn-sm" onclick="clearTerm()">Очистить</button>
       </div>
@@ -527,17 +557,17 @@
       </div>
     </div>
 
-    <!-- Сессия Google -->
+    <!-- Сессия OkCRM -->
     <div class="card">
     {% if not cfg.IS_CLOUD %}
-      <div class="card-title">🔑 Сессия Google Drive</div>
-      <div class="card-desc">Сессия периодически протухает. Перед захватом вручную открой Chrome с флагом <code style="background:#0f1420;padding:1px 5px;border-radius:4px;font-size:11px">--remote-debugging-port=9222</code> и войди на CRM и Google Drive.</div>
+      <div class="card-title">🔑 Сессия OkCRM</div>
+      <div class="card-desc">Сессия CRM периодически протухает. Перед захватом вручную открой Chrome с флагом <code style="background:#0f1420;padding:1px 5px;border-radius:4px;font-size:11px">--remote-debugging-port=9222</code> и войди на CRM. Google Drive больше не нужен — документы загружаются через сервисный аккаунт.</div>
       <button class="btn btn-purple" onclick="runBotTask('/stream/bot/session')">
         🔑 Захватить сессию (grab_session_from_cdp.py)
       </button>
     {% else %}
-      <div class="card-title">🔑 Сессия Google Drive (облако)</div>
-      <div class="card-desc">В облаке Chrome недоступен. Захвати сессию локально (кнопка «Захватить сессию» в localhost:5000), затем вставь сюда содержимое файла <code style="background:#0f1420;padding:1px 5px;border-radius:4px;font-size:11px">okcrm_bot/storage_state.json</code> (принимается и base64). Файл живёт до следующего передеплоя.</div>
+      <div class="card-title">🔑 Сессия OkCRM (облако)</div>
+      <div class="card-desc">В облаке Chrome недоступен. Захвати сессию OkCRM локально (кнопка «Захватить сессию» в localhost:5000), затем вставь сюда содержимое файла <code style="background:#0f1420;padding:1px 5px;border-radius:4px;font-size:11px">okcrm_bot/storage_state.json</code> (принимается и base64). Файл живёт до следующего передеплоя. Сессия Google Drive не требуется — загрузка идёт через сервисный аккаунт.</div>
       <textarea id="session-json-input" rows="6" placeholder="Вставь содержимое storage_state.json..." spellcheck="false" style="width:100%;background:#0f1420;border:1px solid #2d3550;border-radius:6px;color:#e8eaf6;padding:8px 10px;font-size:12px;font-family:'Consolas','Courier New',monospace;line-height:1.5;outline:none;resize:vertical;margin-bottom:8px"></textarea>
       <button class="btn btn-purple" id="session-upload-btn" onclick="uploadSession()">
         ☁️ Загрузить сессию
@@ -614,6 +644,7 @@
     <div class="term-header">
       <span>📟 Вывод процесса</span>
       <div class="actions">
+        <button class="btn btn-green btn-sm" id="resume-btn" onclick="resumeBot()" style="display:none">▶ Продолжить</button>
         <button class="btn btn-red btn-sm" id="bot-btn-stop" onclick="stopBotTask()" style="display:none">■ Стоп</button>
         <button class="btn btn-gray btn-sm" onclick="clearBotTerm()">Очистить</button>
       </div>
@@ -689,6 +720,7 @@
     busy = val;
     document.querySelectorAll('.btn:not(.btn-sm):not(#btn-stop)').forEach(function(b) { b.disabled = val; });
     document.getElementById('btn-stop').style.display = val ? 'inline-flex' : 'none';
+    if (!val) showResumeBtn(false);
     const badge = document.getElementById('badge');
     badge.textContent = val ? '⟳ Выполняется...' : '✓ Готов';
     badge.className = 'badge' + (val ? ' running' : '');
@@ -734,7 +766,14 @@
     source = new EventSource(url);
     source.onmessage = function(e) {
       if (e.data === '[END]') { source.close(); setBusy(false); return; }
-      appendLine(e.data);
+      var line = e.data;
+      // scrape_crm.py печатает [PAUSE] / [RESUME] — показываем «Продолжить»
+      if (line.startsWith('[PAUSE]')) {
+        showResumeBtn(true);
+      } else if (line.startsWith('[RESUME]')) {
+        showResumeBtn(false);
+      }
+      appendLine(line);
     };
     source.onerror = function() {
       appendLine('⚠ Соединение прервано');
@@ -748,9 +787,36 @@
   let botBusy = false;
   const botTerm = document.getElementById('bot-terminal');
 
+  // Пауза может прийти из двух процессов: scrape_crm.py (терминал «Должники»)
+  // и bot.py (терминал «Рассрочки»). Одновременно выполняется только один
+  // процесс (app.py держит один слот), поэтому переключаем обе кнопки разом.
+  function showResumeBtn(val) {
+    ['resume-btn', 'resume-btn-debtors'].forEach(function(id) {
+      var btn = document.getElementById(id);
+      if (btn) btn.style.display = val ? 'inline-block' : 'none';
+    });
+  }
+
+  // Пишет сообщение в тот терминал, чей процесс сейчас выполняется.
+  function appendActiveLine(text) {
+    if (botBusy) appendBotLine(text);
+    else appendLine(text);
+  }
+
+  function resumeBot() {
+    fetch('/api/resume', { method: 'POST', headers: { 'Content-Type': 'application/json' } })
+      .then(function(r) { return r.json(); })
+      .then(function(d) {
+        showResumeBtn(false);
+        if (d && d.error) appendActiveLine('✗ ' + d.error);
+      })
+      .catch(function(e) { appendActiveLine('✗ ' + (e && e.message ? e.message : e)); });
+  }
+
   function setBotBusy(val) {
     botBusy = val;
     document.getElementById('bot-btn-stop').style.display = val ? 'inline-flex' : 'none';
+    if (!val) showResumeBtn(false);
     const badge = document.getElementById('badge');
     if (val) {
       badge.textContent = '⟳ Выполняется...';
@@ -783,7 +849,13 @@
     botSource = new EventSource(url);
     botSource.onmessage = function(e) {
       if (e.data === '[END]') { botSource.close(); setBotBusy(false); return; }
-      appendBotLine(e.data);
+      var line = e.data;
+      if (line.startsWith('[PAUSE]')) {
+        showResumeBtn(true);
+      } else if (line.startsWith('[RESUME]')) {
+        showResumeBtn(false);
+      }
+      appendBotLine(line);
     };
     botSource.onerror = function() {
       appendBotLine('⚠ Соединение прервано');

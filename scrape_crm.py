@@ -62,10 +62,86 @@ import time
 import sys
 import re
 from datetime import datetime
+from pathlib import Path
 
 import requests
 
 CONFIG_FILE = "config.txt"
+
+# Папка самого скрипта — сигнальные файлы паузы кладём именно сюда,
+# чтобы дашборд (app.py) находил их независимо от текущего каталога.
+SCRIPT_DIR = Path(os.path.dirname(os.path.abspath(__file__)))
+PAUSE_FILE = SCRIPT_DIR / ".bot_paused"
+RESUME_FILE = SCRIPT_DIR / ".bot_resume"
+
+# Сколько максимум ждать нажатия «Продолжить» в дашборде, сек.
+RESUME_TIMEOUT_SEC = 1800
+
+
+def _wait_for_resume(message: str, timeout: int = RESUME_TIMEOUT_SEC) -> None:
+    """
+    Ставит выполнение на паузу и ждёт нажатия «▶ Продолжить» в дашборде.
+
+    Печатает маркер [PAUSE] (его ловит SSE-поток дашборда), создаёт файл
+    .bot_paused с текстом подсказки и ждёт появления файла .bot_resume,
+    который создаёт маршрут /api/resume. Заменяет прежние input() — они
+    не работают, когда скрипт запущен как подпроцесс из дашборда.
+    """
+    try:
+        RESUME_FILE.unlink(missing_ok=True)
+    except Exception:
+        pass
+    try:
+        PAUSE_FILE.write_text(message, encoding="utf-8")
+    except Exception:
+        pass
+
+    print(f"[PAUSE] {message}", flush=True)
+
+    deadline = time.time() + timeout if timeout else None
+    while not RESUME_FILE.exists():
+        if deadline and time.time() > deadline:
+            print(
+                f"[RESUME] ⚠️  Никто не нажал «Продолжить» за {timeout // 60} мин — продолжаю сам.",
+                flush=True,
+            )
+            break
+        time.sleep(1)
+
+    for f in (RESUME_FILE, PAUSE_FILE):
+        try:
+            f.unlink(missing_ok=True)
+        except Exception:
+            pass
+    print("[RESUME] Продолжаем...", flush=True)
+
+
+def _find_file_input(driver, timeout: int = 10):
+    """
+    Ищет input[type=file] для загрузки списка номеров в МТС.
+
+    Раньше использовался единственный жёсткий селектор
+    "input[type='file'].file-input" — если МТС меняет класс или элемент
+    ещё не отрисован, find_element сразу падал с NoSuchElementException и
+    весь обзвон обрывался. Теперь пробуем несколько селекторов с ожиданием.
+    """
+    selectors = [
+        "input[type='file'].file-input",
+        "input[type='file'][accept]",
+        "input[type='file']",
+    ]
+    deadline = time.time() + timeout
+    while True:
+        for sel in selectors:
+            try:
+                elements = driver.find_elements(By.CSS_SELECTOR, sel)
+            except Exception:
+                elements = []
+            if elements:
+                return elements[0]
+        if time.time() >= deadline:
+            return None
+        time.sleep(0.5)
 
 
 def load_config() -> dict:
@@ -548,9 +624,16 @@ def cmd_call_new(external_driver=None, task_name_prefix=DEBTOR_TASK_NAME_PREFIX,
         task_name_file = DEBTOR_LAST_TASK_NAME_FILE
 
     mts_xlsx_file = (numbers_file or DEBTOR_MTS_NUMBERS_FILE).replace(".csv", ".xlsx")
+    # Путь в конфиге относительный ("output/..."), а дашборд может запустить
+    # скрипт с другим текущим каталогом — поэтому дополнительно пробуем
+    # разрешить путь относительно папки самого скрипта.
     if not os.path.exists(mts_xlsx_file):
-        print(f"❌ Файл {mts_xlsx_file} не найден. Сначала запусти: python scrape_crm.py debtors_export")
-        sys.exit(1)
+        candidate = str(SCRIPT_DIR / mts_xlsx_file)
+        if os.path.exists(candidate):
+            mts_xlsx_file = candidate
+        else:
+            print(f"❌ Файл {mts_xlsx_file} не найден. Сначала запусти: python scrape_crm.py debtors_export")
+            sys.exit(1)
 
     mts_xlsx_abspath = os.path.abspath(mts_xlsx_file)
 
@@ -582,21 +665,22 @@ def cmd_call_new(external_driver=None, task_name_prefix=DEBTOR_TASK_NAME_PREFIX,
             print("  Вход выполнен автоматически.")
         else:
             print("  Если МТС попросит войти — авторизуйся в открывшемся окне.")
-        print("  Дождись пока полностью загрузится список заданий.")
-        if not IS_CLOUD:
-            print("  Нажми Enter здесь, когда увидишь кнопку «Добавить задание».")
-            print("=" * 55)
-            input("  -> Нажми Enter: ")
-        else:
-            print("  Облачный режим: автоматическое ожидание кнопки «Добавить задание»...")
-            print("=" * 55)
-            # Ждём появления кнопки вместо input()
-            try:
-                WebDriverWait(driver, 30).until(
-                    EC.element_to_be_clickable((By.XPATH, "//button[contains(., 'Добавить задание')]"))
-                )
-            except Exception:
+        print("  Жду появления кнопки «Добавить задание»...")
+        print("=" * 55)
+        # Раньше локально здесь стоял input() — скрипт запускается из дашборда
+        # как подпроцесс без консоли, поэтому просто ждём кнопку в обоих режимах.
+        try:
+            WebDriverWait(driver, 60).until(
+                EC.element_to_be_clickable((By.XPATH, "//button[contains(., 'Добавить задание')]"))
+            )
+        except Exception:
+            if IS_CLOUD:
                 time.sleep(5)
+            else:
+                _wait_for_resume(
+                    "Кнопка «Добавить задание» не появилась. Войдите в МТС в открытом окне браузера "
+                    "и нажмите «Продолжить» в дашборде."
+                )
         print()
 
         print("➕ Нажимаю «Добавить задание»...")
@@ -707,8 +791,64 @@ def cmd_call_new(external_driver=None, task_name_prefix=DEBTOR_TASK_NAME_PREFIX,
 
         # 7. Загружаем файл номеров
         print(f"📤 Загружаю файл номеров: {mts_xlsx_abspath}")
-        file_input = driver.find_element(By.CSS_SELECTOR, "input[type='file'].file-input")
-        file_input.send_keys(mts_xlsx_abspath)
+        if not os.path.isfile(mts_xlsx_abspath):
+            print(f"   ❌ Файл номеров пропал: {mts_xlsx_abspath}")
+            return
+
+        file_input = _find_file_input(driver, timeout=10)
+        if file_input is None:
+            # Иногда input[type=file] создаётся только после клика по кнопке
+            # «Загрузить список» — жмём её и ищем элемент ещё раз.
+            print("   ⏳ input[type=file] не найден — нажимаю «Загрузить список»...")
+            try:
+                upload_btn = driver.find_element(
+                    By.XPATH, "//button[contains(., 'Загрузить список')]"
+                )
+                driver.execute_script("arguments[0].scrollIntoView({block:'center'});", upload_btn)
+                time.sleep(0.3)
+                driver.execute_script("arguments[0].click();", upload_btn)
+                time.sleep(1)
+            except Exception as e:
+                print(f"   ⚠️  Кнопка «Загрузить список» не найдена: {e}")
+            file_input = _find_file_input(driver, timeout=10)
+
+        if file_input is None:
+            print("   ❌ Не удалось найти поле загрузки файла на странице МТС.")
+            if IS_CLOUD:
+                print("   ❌ Облако: прерываю — загрузите номера в МТС вручную.")
+                return
+            _wait_for_resume(
+                f"Загрузите файл номеров вручную в браузере МТС: {mts_xlsx_abspath} — "
+                "затем нажмите «Продолжить» в дашборде"
+            )
+        else:
+            # Поле загрузки в МТС скрыто через CSS. send_keys к скрытому input
+            # обычно работает, но при display:none/размере 0 некоторые сборки
+            # ChromeDriver кидают ElementNotInteractableException — поэтому
+            # принудительно делаем элемент видимым перед отправкой пути.
+            try:
+                driver.execute_script(
+                    "arguments[0].style.display='block';"
+                    "arguments[0].style.visibility='visible';"
+                    "arguments[0].style.opacity='1';"
+                    "arguments[0].style.width='1px';"
+                    "arguments[0].style.height='1px';"
+                    "arguments[0].removeAttribute('hidden');",
+                    file_input,
+                )
+            except Exception:
+                pass
+            try:
+                file_input.send_keys(mts_xlsx_abspath)
+                print("   ✅ Путь к файлу передан в поле загрузки")
+            except Exception as e:
+                print(f"   ❌ Не удалось передать файл в МТС: {e}")
+                if IS_CLOUD:
+                    return
+                _wait_for_resume(
+                    f"Загрузите файл номеров вручную в браузере МТС: {mts_xlsx_abspath} — "
+                    "затем нажмите «Продолжить» в дашборде"
+                )
 
         # 10. Подтверждаем модальное окно "Добавление номеров".
         # ВАЖНО: на странице ДВЕ кнопки с текстом "Загрузить список" —
@@ -760,10 +900,10 @@ def cmd_call_new(external_driver=None, task_name_prefix=DEBTOR_TASK_NAME_PREFIX,
             if IS_CLOUD:
                 print("   ⚠️  Облако: продолжаю без подтверждения — проверьте МТС вручную.")
             else:
-                print("   ⚠️  ОБЯЗАТЕЛЬНО посмотри на экран браузера прямо сейчас:")
-                print("   ⚠️  если видишь окно 'Добавление номеров' — нажми в нём")
-                print("   ⚠️  кнопку 'Загрузить список' САМ, и только потом жми Enter здесь.")
-                input("   -> Нажми Enter здесь ПОСЛЕ клика в браузере (или если окна не было): ")
+                _wait_for_resume(
+                    "Если в браузере МТС открыто окно «Добавление номеров» — нажмите в нём "
+                    "«Загрузить список», затем нажмите «Продолжить» в дашборде"
+                )
 
         # 10.5 Настраиваем расписание: Пн-Пт, время 07:00 - 21:00
         print("📅 Настраиваю расписание (Пн-Пт, 07:00-21:00)...")
@@ -860,103 +1000,99 @@ def cmd_call_new(external_driver=None, task_name_prefix=DEBTOR_TASK_NAME_PREFIX,
             if IS_CLOUD:
                 print("   ⚠️  Облако: продолжаю — донастройте расписание в МТС вручную.")
             else:
-                print("   ⚠️  Настрой вручную: Пн-Пт, время 07:00-21:00, затем нажми Enter.")
-                input("   -> Нажми Enter после настройки расписания вручную: ")
+                _wait_for_resume(
+                    "Настройте расписание в браузере МТС (Пн-Пт, 07:00-21:00), "
+                    "затем нажмите «Продолжить» в дашборде"
+                )
 
         # 10.6 Настройка дозвона: максимум попыток и перезвон
         print("\n📞 Настраиваю параметры дозвона...")
-        if not IS_CLOUD:
-            print("  ОСТАНОВКА: настрой параметры дозвона ВРУЧНУЮ на экране браузера:")
-            print("  - Максимум попыток: выбери 3")
-            print("  - Перезванивать через: впиши 5")
-            input("  -> Когда настроишь — нажми Enter ЗДЕСЬ (не раньше!): ")
-        else:
-            # Пытаемся автоматизировать. Если не получится — задание создаётся
-            # с дефолтными настройками; пользователь может подправить в МТС вручную.
-            time.sleep(2)
-            try:
-                # Максимум попыток
-                attempt_inputs = driver.find_elements(By.XPATH,
-                    "//input[@type='number'] | //input[contains(@placeholder,'попыт')]"
-                )
-                for inp in attempt_inputs:
-                    try:
-                        if inp.is_displayed():
-                            driver.execute_script("arguments[0].value='3'; arguments[0].dispatchEvent(new Event('input',{bubbles:true})); arguments[0].dispatchEvent(new Event('change',{bubbles:true}));", inp)
-                            print("   ✅ Максимум попыток: 3")
-                            break
-                    except Exception:
-                        continue
-            except Exception as e:
-                print(f"   ⚠️  Не удалось задать максимум попыток: {e}")
+        # Раньше локально здесь стоял input() — теперь пробуем настроить
+        # автоматически в ОБОИХ режимах. Если что-то не выйдет, пользователь
+        # поправит это в браузере на общей паузе перед сохранением задания.
+        time.sleep(2)
+        try:
+            # Максимум попыток
+            attempt_inputs = driver.find_elements(By.XPATH,
+                "//input[@type='number'] | //input[contains(@placeholder,'попыт')]"
+            )
+            for inp in attempt_inputs:
+                try:
+                    if inp.is_displayed():
+                        driver.execute_script("arguments[0].value='3'; arguments[0].dispatchEvent(new Event('input',{bubbles:true})); arguments[0].dispatchEvent(new Event('change',{bubbles:true}));", inp)
+                        print("   ✅ Максимум попыток: 3")
+                        break
+                except Exception:
+                    continue
+        except Exception as e:
+            print(f"   ⚠️  Не удалось задать максимум попыток: {e}")
 
-            try:
-                # Перезвон через N минут
-                interval_inputs = driver.find_elements(By.XPATH,
-                    "//input[@type='number'] | //input[contains(@placeholder,'минут')]"
-                )
-                set_count = 0
-                for inp in interval_inputs:
-                    try:
-                        if inp.is_displayed() and set_count == 1:
-                            driver.execute_script("arguments[0].value='5'; arguments[0].dispatchEvent(new Event('input',{bubbles:true})); arguments[0].dispatchEvent(new Event('change',{bubbles:true}));", inp)
-                            print("   ✅ Перезвон через: 5 мин")
-                            break
-                        if inp.is_displayed():
-                            set_count += 1
-                    except Exception:
-                        continue
-            except Exception as e:
-                print(f"   ⚠️  Не удалось задать интервал перезвона: {e}")
+        try:
+            # Перезвон через N минут
+            interval_inputs = driver.find_elements(By.XPATH,
+                "//input[@type='number'] | //input[contains(@placeholder,'минут')]"
+            )
+            set_count = 0
+            for inp in interval_inputs:
+                try:
+                    if inp.is_displayed() and set_count == 1:
+                        driver.execute_script("arguments[0].value='5'; arguments[0].dispatchEvent(new Event('input',{bubbles:true})); arguments[0].dispatchEvent(new Event('change',{bubbles:true}));", inp)
+                        print("   ✅ Перезвон через: 5 мин")
+                        break
+                    if inp.is_displayed():
+                        set_count += 1
+                except Exception:
+                    continue
+        except Exception as e:
+            print(f"   ⚠️  Не удалось задать интервал перезвона: {e}")
 
         print("   Продолжаю...")
         time.sleep(0.5)
 
         # 11. "Включить информирование"
+        # Пробуем включить автоматически в обоих режимах; локально после этого
+        # всё равно встаём на паузу, чтобы человек проверил галочку глазами.
         print("\n🔘 Включаю информирование...")
-        if not IS_CLOUD:
-            print("  ОСТАНОВКА: включи тумблер «Включить информирование» ВРУЧНУЮ")
-            print("  на экране браузера (должен стать синим/зелёным).")
-            input("  -> Когда включишь — нажми Enter ЗДЕСЬ: ")
-        else:
-            time.sleep(1)
-            try:
-                # Ищем тумблер/переключатель "Включить информирование"
-                toggles = driver.find_elements(By.XPATH,
-                    "//*[contains(text(),'информирование')]/following::input[@type='checkbox'][1] | "
-                    "//*[contains(text(),'информирование')]/following::*[contains(@class,'toggle') or contains(@class,'switch')][1]"
-                )
-                clicked = False
-                for toggle in toggles:
+        time.sleep(1)
+        try:
+            # Ищем тумблер/переключатель "Включить информирование"
+            toggles = driver.find_elements(By.XPATH,
+                "//*[contains(text(),'информирование')]/following::input[@type='checkbox'][1] | "
+                "//*[contains(text(),'информирование')]/following::*[contains(@class,'toggle') or contains(@class,'switch')][1]"
+            )
+            clicked = False
+            for toggle in toggles:
+                try:
+                    if toggle.is_displayed():
+                        driver.execute_script("arguments[0].click();", toggle)
+                        print("   ✅ Тумблер «Включить информирование» нажат")
+                        clicked = True
+                        break
+                except Exception:
+                    continue
+            if not clicked:
+                # Запасной вариант: ищем label с текстом
+                labels = driver.find_elements(By.XPATH, "//label[contains(.,'информирование')]")
+                for label in labels:
                     try:
-                        if toggle.is_displayed():
-                            driver.execute_script("arguments[0].click();", toggle)
-                            print("   ✅ Тумблер «Включить информирование» нажат")
+                        if label.is_displayed():
+                            driver.execute_script("arguments[0].click();", label)
+                            print("   ✅ Label «информирование» нажат")
                             clicked = True
                             break
                     except Exception:
                         continue
-                if not clicked:
-                    # Запасной вариант: ищем label с текстом
-                    labels = driver.find_elements(By.XPATH, "//label[contains(.,'информирование')]")
-                    for label in labels:
-                        try:
-                            if label.is_displayed():
-                                driver.execute_script("arguments[0].click();", label)
-                                print("   ✅ Label «информирование» нажат")
-                                clicked = True
-                                break
-                        except Exception:
-                            continue
-                if not clicked:
-                    print("   ⚠️  Не удалось включить информирование автоматически.")
-                    print("   ⚠️  Задание будет создано — включите вручную в МТС если нужно.")
-            except Exception as e:
-                print(f"   ⚠️  Ошибка при включении информирования: {e}")
-        print("   Продолжаю...")
+            if not clicked:
+                print("   ⚠️  Не удалось включить информирование автоматически.")
+                print("   ⚠️  Отметьте галочку вручную на паузе ниже.")
+        except Exception as e:
+            print(f"   ⚠️  Ошибка при включении информирования: {e}")
         time.sleep(0.5)
 
-        # Финальная проверка (только локально — в облаке некому смотреть)
+        # Финальная пауза (только локально — в облаке некому смотреть).
+        # Здесь человек в открытом окне Chrome доводит задание до ума:
+        # ставит галочку «Включить информирование», проверяет остальное,
+        # и жмёт «▶ Продолжить» в дашборде — только после этого сохраняем.
         if not IS_CLOUD:
             print("\n" + "=" * 55)
             print("  ПРОВЕРЬ НА ЭКРАНЕ БРАУЗЕРА:")
@@ -966,9 +1102,9 @@ def cmd_call_new(external_driver=None, task_name_prefix=DEBTOR_TASK_NAME_PREFIX,
             print("  - максимум попыток: 3, перезвон через: 5 минут?")
             print("  - включён ли тумблер «Включить информирование»?")
             print("=" * 55)
-            print("  Если всё верно — нажми Enter, чтобы сохранить и запустить обзвон.")
-            print("  Если что-то не так — закрой окно браузера вместо Enter.")
-            input("  -> Нажми Enter: ")
+            _wait_for_resume(
+                "Отметьте «Включить информирование» в браузере МТС и нажмите «Продолжить» в дашборде"
+            )
         else:
             print("☁️  Облачный режим: сохраняю задание автоматически...")
 
@@ -1063,7 +1199,10 @@ def cmd_fetch_report(task_url: str, external_driver=None, merge_fn=None, task_na
                 task_name = DEBTOR_TASK_NAME_PREFIX
                 print(f"   Облако: ищу последнее задание «{task_name}»...")
             else:
-                input("   Нажми кнопку скачивания вручную, затем Enter: ")
+                _wait_for_resume(
+                    "Скачайте отчёт нужного задания вручную в браузере МТС, "
+                    "затем нажмите «Продолжить» в дашборде"
+                )
 
         selected_row = None
         if task_name:
@@ -1110,7 +1249,10 @@ def cmd_fetch_report(task_url: str, external_driver=None, merge_fn=None, task_na
                     print("   ⚠️  Облако: прерываю — запустите повторно позже.")
                     return
                 print("   Скачай отчёт вручную когда задание завершится.")
-                input("   -> Нажми Enter после скачивания: ")
+                _wait_for_resume(
+                    "Задание ещё не завершилось. Скачайте отчёт вручную в браузере МТС, "
+                    "затем нажмите «Продолжить» в дашборде"
+                )
 
         # Засекаем файлы ДО скачивания
         before_files = set(os.listdir(DOWNLOADS_DIR)) if os.path.isdir(DOWNLOADS_DIR) else set()
@@ -1145,7 +1287,10 @@ def cmd_fetch_report(task_url: str, external_driver=None, merge_fn=None, task_na
             print("   2. Нажми кнопку скачивания отчёта (иконка ↓) у нужного задания")
             print("   3. В появившемся окне выбери CSV и нажми «Скачать»")
             print("   4. Дождись скачивания и вернись сюда")
-            input("   -> Нажми Enter после скачивания: ")
+            _wait_for_resume(
+                "Нажмите кнопку скачивания отчёта (↓) у нужного задания в браузере МТС, "
+                "выберите CSV и скачайте — затем нажмите «Продолжить» в дашборде"
+            )
 
         # После клика по ↓ МТС показывает модальное окно выбора формата
         # (Excel / CSV) с кнопкой «Скачать» — всё на той же странице, без новой вкладки.
@@ -1264,6 +1409,14 @@ def main():
     if len(sys.argv) < 2:
         print(__doc__)
         sys.exit(1)
+
+    # Чистим сигнальные файлы паузы от предыдущего (возможно упавшего) запуска,
+    # иначе дашборд покажет кнопку «Продолжить» на пустом месте.
+    for _f in (PAUSE_FILE, RESUME_FILE):
+        try:
+            _f.unlink(missing_ok=True)
+        except Exception:
+            pass
 
     command = sys.argv[1]
 
