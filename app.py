@@ -174,7 +174,7 @@ def sse_stream(cmd, label, cwd=None, extra_env=None):
         try:
             while True:
                 try:
-                    line = q.get(timeout=20)
+                    line = q.get(timeout=5)
                     if line is None:
                         break
                     yield f'data: {line.rstrip()}\n\n'

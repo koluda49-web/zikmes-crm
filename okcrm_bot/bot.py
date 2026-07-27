@@ -329,7 +329,13 @@ def main():
     _cloud_args = (
         [
             '--no-sandbox', '--disable-dev-shm-usage', '--disable-gpu', '--disable-setuid-sandbox',
-            '--disable-blink-features=AutomationControlled',  # скрываем признаки автоматизации
+            '--disable-blink-features=AutomationControlled',
+            # Memory reduction on Render free tier (512 MB limit)
+            '--disable-extensions', '--disable-default-apps', '--disable-sync',
+            '--disable-background-networking', '--disable-background-timer-throttling',
+            '--disable-features=IsolateOrigins,site-per-process',
+            '--renderer-process-limit=1',
+            '--disk-cache-size=0', '--media-cache-size=0',
         ]
         if config.IS_CLOUD else ['--disable-blink-features=AutomationControlled']
     )
@@ -458,6 +464,12 @@ def main():
                 screenshot_path = _save_error_screenshot(page, order_id, "unexpected")
                 state_store.log_error(order_id, "unexpected", f"{e} | скриншот: {screenshot_path}")
                 print(f"[{order_id}] ОШИБКА: {e}")
+            # Clear page between orders to release Chromium renderer memory
+            if config.IS_CLOUD:
+                try:
+                    page.goto("about:blank", wait_until="commit", timeout=5000)
+                except Exception:
+                    pass
             time.sleep(config.ACTION_DELAY_SECONDS)
 
         browser.close()
