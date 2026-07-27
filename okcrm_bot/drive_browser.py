@@ -162,3 +162,77 @@ def upload_file(page, local_path: str) -> None:
     file_chooser = fc_info.value
     file_chooser.set_files(local_path)
     page.wait_for_timeout(3000)
+
+
+def upload_file_via_token(page, folder_id: str, local_path: str) -> None:
+    """
+    Перехватывает OAuth Bearer-токен из запросов браузерной сессии Drive,
+    затем загружает файл напрямую через Drive REST API (минуя UI).
+    Использует квоту пользователя, а не сервисного аккаунта.
+    """
+    import json as _json
+    import requests as _req
+
+    captured_tokens = []
+
+    def _on_request(request):
+        auth = request.headers.get('authorization', '')
+        if auth.startswith('Bearer '):
+            token = auth[7:]
+            if token not in captured_tokens:
+                captured_tokens.append(token)
+
+    page.on('request', _on_request)
+    try:
+        page.goto(f"https://drive.google.com/drive/folders/{folder_id}")
+        try:
+            page.wait_for_load_state("networkidle", timeout=12000)
+        except Exception:
+            pass
+        page.wait_for_timeout(2000)
+    finally:
+        page.remove_listener('request', _on_request)
+
+    if not captured_tokens:
+        raise RuntimeError(
+            "Не удалось перехватить OAuth-токен из сессии Google Drive. "
+            "Обновите storage_state.json через кнопку «Загрузить сессию»."
+        )
+
+    access_token = captured_tokens[-1]
+    print(f"  OAuth-токен получен, загружаю через Drive API...")
+
+    file_name = os.path.basename(local_path)
+    mime_type = 'application/vnd.openxmlformats-officedocument.wordprocessingml.document'
+    metadata = {"name": file_name, "parents": [folder_id]}
+
+    with open(local_path, 'rb') as f:
+        file_bytes = f.read()
+
+    boundary = 'drive_upload_boundary_zikmes'
+    meta_json = _json.dumps(metadata, ensure_ascii=False).encode('utf-8')
+    body = (
+        f'--{boundary}\r\nContent-Type: application/json; charset=UTF-8\r\n\r\n'.encode() +
+        meta_json + b'\r\n' +
+        f'--{boundary}\r\nContent-Type: {mime_type}\r\n\r\n'.encode() +
+        file_bytes +
+        f'\r\n--{boundary}--'.encode()
+    )
+
+    resp = _req.post(
+        'https://www.googleapis.com/upload/drive/v3/files?uploadType=multipart',
+        headers={
+            'Authorization': f'Bearer {access_token}',
+            'Content-Type': f'multipart/related; boundary={boundary}',
+        },
+        data=body,
+        timeout=120,
+    )
+
+    if resp.status_code not in (200, 201):
+        raise RuntimeError(
+            f"Drive API upload failed: {resp.status_code} — {resp.text[:500]}"
+        )
+
+    uploaded = resp.json()
+    print(f"  Файл загружен: {file_name} (id={uploaded.get('id')})")

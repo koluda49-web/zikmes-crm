@@ -195,12 +195,10 @@ def process_order(page, order_id: str, dry_run: bool, drive_service=None) -> Non
         folder_id = drive_utils.get_or_create_order_folder(drive_service, order_date, order_id, surname)
         folder_url = f"https://drive.google.com/drive/folders/{folder_id}"
         print(f"[{order_id}] папка создана: {folder_url}")
-        # Браузер загружает файл (использует квоту пользователя)
-        page.goto(folder_url)
-        page.wait_for_timeout(2000)
+        # OAuth-токен из браузерной сессии → загрузка через Drive REST API (без UI)
         for local_path in local_files:
             print(f"[{order_id}] загружаю файл {local_path}...")
-            drive_browser.upload_file(page, local_path)
+            drive_browser.upload_file_via_token(page, folder_id, local_path)
     else:
         folder_url = drive_browser.navigate_to_order_folder(page, order_date, order_id, surname)
         print(f"[{order_id}] сейчас на Drive-странице: {folder_url}")
