@@ -61,20 +61,22 @@ def open_folder_by_name(page, name: str) -> bool:
     return True
 
 
-def _click_first_matching_role(page, role: str, names, *, last=False, timeout=15000):
-    """Кликает первый найденный элемент по role из списка имён (RU/EN)."""
-    for name in names:
-        loc = page.get_by_role(role, name=name)
-        try:
-            loc.first.wait_for(state="visible", timeout=3000)
-            if last:
-                page.get_by_role(role, name=name).last.click(timeout=timeout)
-            else:
-                loc.first.click(timeout=timeout)
-            return
-        except Exception:
-            continue
-    raise RuntimeError(f"Не найден элемент role={role!r} с именем из {names}")
+def _wait_for_create_button(page, timeout_ms=20000):
+    """Ждёт появления кнопки Создать/New и возвращает её имя."""
+    step = 500
+    elapsed = 0
+    while elapsed < timeout_ms:
+        for name in _BTN_CREATE_NAMES:
+            loc = page.get_by_role("button", name=name)
+            if loc.count() > 0:
+                try:
+                    loc.first.wait_for(state="visible", timeout=1000)
+                    return name
+                except Exception:
+                    pass
+        page.wait_for_timeout(step)
+        elapsed += step
+    raise RuntimeError(f"Кнопка 'Создать'/'New' не появилась за {timeout_ms}мс")
 
 
 def create_folder(page, name: str) -> None:
@@ -83,22 +85,31 @@ def create_folder(page, name: str) -> None:
         page.wait_for_load_state("networkidle", timeout=8000)
     except Exception:
         pass
-    _click_first_matching_role(page, "button", _BTN_CREATE_NAMES, timeout=20000)
-    _click_first_matching_role(page, "menuitem", _MENU_FOLDER_PATTERNS)
-    # Текстовое поле для имени папки
-    textbox = None
-    for tb_name in _FOLDER_TEXTBOX_NAMES:
-        loc = page.get_by_role("textbox", name=tb_name)
+    btn_name = _wait_for_create_button(page, timeout_ms=20000)
+    page.get_by_role("button", name=btn_name).first.click(timeout=15000)
+
+    # Меню "Новая папка" / "New folder"
+    for pattern in _MENU_FOLDER_PATTERNS:
         try:
-            loc.wait_for(state="visible", timeout=3000)
-            textbox = loc
+            page.get_by_role("menuitem", name=pattern).wait_for(state="visible", timeout=3000)
+            page.get_by_role("menuitem", name=pattern).click()
             break
         except Exception:
             continue
-    if textbox is None:
-        raise RuntimeError("Не найдено текстовое поле для имени папки")
-    textbox.fill(name)
-    _click_first_matching_role(page, "button", _BTN_CREATE_NAMES, last=True, timeout=10000)
+
+    # Текстовое поле для имени
+    for tb_name in _FOLDER_TEXTBOX_NAMES:
+        try:
+            loc = page.get_by_role("textbox", name=tb_name)
+            loc.wait_for(state="visible", timeout=5000)
+            loc.fill(name)
+            break
+        except Exception:
+            continue
+
+    # Кнопка подтверждения (последняя "Создать"/"New" в диалоге)
+    btn_name2 = _wait_for_create_button(page, timeout_ms=8000)
+    page.get_by_role("button", name=btn_name2).last.click(timeout=10000)
     page.wait_for_timeout(1500)
 
 
@@ -138,9 +149,16 @@ def navigate_to_order_folder(page, order_date_text: str, order_id: str, surname:
 
 def upload_file(page, local_path: str) -> None:
     """Загружает файл local_path в текущую открытую папку через диалог выбора файла."""
-    _click_first_matching_role(page, "button", _BTN_CREATE_NAMES, timeout=15000)
+    btn_name = _wait_for_create_button(page, timeout_ms=15000)
+    page.get_by_role("button", name=btn_name).first.click(timeout=15000)
     with page.expect_file_chooser() as fc_info:
-        _click_first_matching_role(page, "menuitem", _UPLOAD_FILE_PATTERNS)
+        for pattern in _UPLOAD_FILE_PATTERNS:
+            try:
+                page.get_by_role("menuitem", name=pattern).wait_for(state="visible", timeout=3000)
+                page.get_by_role("menuitem", name=pattern).click()
+                break
+            except Exception:
+                continue
     file_chooser = fc_info.value
     file_chooser.set_files(local_path)
     page.wait_for_timeout(3000)
