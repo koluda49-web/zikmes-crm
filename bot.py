@@ -373,6 +373,16 @@ def main():
                     '--disable-gpu',
                     '--disable-setuid-sandbox',
                     '--disable-blink-features=AutomationControlled',
+                    # Экономия памяти на Render free tier (512 МБ)
+                    '--disable-extensions',
+                    '--disable-default-apps',
+                    '--disable-sync',
+                    '--disable-background-networking',
+                    '--disable-background-timer-throttling',
+                    '--disable-features=IsolateOrigins,site-per-process',
+                    '--renderer-process-limit=1',
+                    '--disk-cache-size=0',
+                    '--media-cache-size=0',
                 ],
             )
             context = browser.new_context(
@@ -402,6 +412,18 @@ def main():
                 order_id = cand["order_id"]
                 phone = normalize_phone(cand["phone"])
                 print(f"  [{idx}/{len(candidates)}] Заказ {order_id}...")
+
+                # Пересоздаём вкладку перед каждым заказом (кроме первого):
+                # close() + new_page() реально освобождает память рендерера,
+                # переход на about:blank этого НЕ делает.
+                # Критично на Render free tier (512 МБ) — иначе OOM и обрыв SSE.
+                if IS_CLOUD and idx > 1:
+                    try:
+                        page.close()
+                        page = context.new_page()
+                        page.on("dialog", lambda d: d.accept())
+                    except Exception as _rec_exc:
+                        print(f"    ⚠️  Не удалось пересоздать вкладку: {_rec_exc}")
 
                 try:
                     overdue_payments = parse_overdue_payments_for_order(
@@ -444,7 +466,15 @@ def main():
 
         finally:
             flush_results(results_buffer, webhook_url, run_date, excel_path, accumulated_phones)
-            context.close()
+            try:
+                context.close()
+            except Exception:
+                pass
+            if IS_CLOUD:
+                try:
+                    browser.close()
+                except Exception:
+                    pass
 
     print(f"\nГотово. Обработано заказов: {processed}. Найдено просроченных платежей за этот прогон: {found_total}.")
     if found_total == 0:

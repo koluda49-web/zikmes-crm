@@ -235,33 +235,7 @@ def _find_pw_chromium():
     if 'PLAYWRIGHT_BROWSERS_PATH' not in os.environ:
         os.environ['PLAYWRIGHT_BROWSERS_PATH'] = '/opt/render/project/src/.pw-browsers'
 
-    # Способ 1: спрашиваем у Playwright API — самый надёжный, не зависит от структуры папок
-    try:
-        from playwright.sync_api import sync_playwright
-        with sync_playwright() as p:
-            binary = p.chromium.executable_path
-        if binary and os.path.exists(binary):
-            print(f"   [MTS] Chromium (Playwright API): {binary}")
-            try:
-                out = _sp.check_output([binary, '--version'], stderr=_sp.DEVNULL, text=True)
-                m = re.search(r'[\d]+\.[\d]+\.[\d]+\.[\d]+', out)
-                return binary, (m.group(0) if m else None)
-            except Exception as e:
-                print(f"   [MTS] --version: {e}")
-                return binary, None
-        print(f"   [MTS] Playwright вернул путь, но файл не существует: {binary}")
-    except Exception as e:
-        print(f"   [MTS] Playwright API: {e}")
-
-    # Способ 2: рекурсивный поиск любого файла 'chrome' в .pw-browsers/chromium-*/
-    pw_root = os.environ.get('PLAYWRIGHT_BROWSERS_PATH', '/opt/render/project/src/.pw-browsers')
-    candidates = sorted(_glob.glob(
-        os.path.join(pw_root, 'chromium-*', '**', 'chrome'),
-        recursive=True
-    ))
-    if candidates:
-        binary = candidates[-1]
-        print(f"   [MTS] Chromium (glob): {binary}")
+    def _with_version(binary):
         try:
             out = _sp.check_output([binary, '--version'], stderr=_sp.DEVNULL, text=True)
             m = re.search(r'[\d]+\.[\d]+\.[\d]+\.[\d]+', out)
@@ -269,6 +243,37 @@ def _find_pw_chromium():
         except Exception as e:
             print(f"   [MTS] --version: {e}")
             return binary, None
+
+    pw_root = os.environ.get('PLAYWRIGHT_BROWSERS_PATH', '/opt/render/project/src/.pw-browsers')
+
+    # Способ 1: glob по стандартной структуре папок Playwright.
+    # Не поднимает sync_playwright() — экономит ~50 МБ RAM (важно на Render free tier).
+    candidates = sorted(_glob.glob(
+        os.path.join(pw_root, 'chromium-*', 'chrome-linux', 'chrome')
+    ))
+    if not candidates:
+        # Запасной рекурсивный поиск любого файла 'chrome' в .pw-browsers/chromium-*/
+        candidates = sorted(_glob.glob(
+            os.path.join(pw_root, 'chromium-*', '**', 'chrome'),
+            recursive=True
+        ))
+    if candidates:
+        binary = candidates[-1]
+        print(f"   [MTS] Chromium (glob): {binary}")
+        return _with_version(binary)
+
+    # Способ 2 (fallback): спрашиваем у Playwright API — дороже по памяти,
+    # но не зависит от структуры папок
+    try:
+        from playwright.sync_api import sync_playwright
+        with sync_playwright() as p:
+            binary = p.chromium.executable_path
+        if binary and os.path.exists(binary):
+            print(f"   [MTS] Chromium (Playwright API): {binary}")
+            return _with_version(binary)
+        print(f"   [MTS] Playwright вернул путь, но файл не существует: {binary}")
+    except Exception as e:
+        print(f"   [MTS] Playwright API: {e}")
 
     return None, None
 
@@ -295,6 +300,17 @@ def create_driver():
         options.add_argument("--disable-gpu")
         options.add_argument("--disable-setuid-sandbox")
         options.add_argument("--window-size=1600,1000")
+
+        # Экономия памяти на Render free tier (512 МБ) — иначе OOM и обрыв SSE
+        options.add_argument("--disable-extensions")
+        options.add_argument("--disable-default-apps")
+        options.add_argument("--disable-sync")
+        options.add_argument("--disable-background-networking")
+        options.add_argument("--disable-background-timer-throttling")
+        options.add_argument("--disable-features=IsolateOrigins,site-per-process")
+        options.add_argument("--renderer-process-limit=1")
+        options.add_argument("--disk-cache-size=0")
+        options.add_argument("--media-cache-size=0")
 
         # Используем Playwright-установленный Chromium как Chrome-бинарь для Selenium
         chrome_binary, chrome_version = _find_pw_chromium()
