@@ -237,7 +237,7 @@ def process_order(page, order_id: str, dry_run: bool, drive_service=None) -> Non
     if note_field.count() == 0:
         note_field = page.get_by_label(sel.NOTE_LABEL)
     current_note = note_field.input_value()
-    updated_note = f"{current_note}\n{folder_url}\nсделано!!"
+    updated_note = f"{current_note}\n{folder_url}\nСделано!!"
     note_field.fill(updated_note)
 
     print(f"[{order_id}] меняю статус на 'Новый'...")
