@@ -25,7 +25,8 @@ import state_store
 from parse_notes import resolve_downpayment_amount
 import drive_utils
 
-_use_service_account = False  # service account has no storage quota — always use browser session
+# Hybrid: service account creates folders (no quota), browser uploads files (uses user quota)
+_sa_for_folders = os.path.exists(config.GOOGLE_SERVICE_ACCOUNT_JSON)
 import drive_browser
 
 
@@ -190,11 +191,16 @@ def process_order(page, order_id: str, dry_run: bool, drive_service=None) -> Non
 
     print(f"[{order_id}] загружаю в Google Drive, дата='{order_date}'...")
     if drive_service is not None:
+        # Сервисный аккаунт создаёт папки (metadata, без quota)
         folder_id = drive_utils.get_or_create_order_folder(drive_service, order_date, order_id, surname)
+        folder_url = f"https://drive.google.com/drive/folders/{folder_id}"
+        print(f"[{order_id}] папка создана: {folder_url}")
+        # Браузер загружает файл (использует квоту пользователя)
+        page.goto(folder_url)
+        page.wait_for_timeout(2000)
         for local_path in local_files:
             print(f"[{order_id}] загружаю файл {local_path}...")
-            drive_utils.upload_file(drive_service, local_path, folder_id)
-        folder_url = f"https://drive.google.com/drive/folders/{folder_id}"
+            drive_browser.upload_file(page, local_path)
     else:
         folder_url = drive_browser.navigate_to_order_folder(page, order_date, order_id, surname)
         print(f"[{order_id}] сейчас на Drive-странице: {folder_url}")
@@ -330,9 +336,24 @@ def main():
         page.on("dialog", lambda dialog: dialog.accept())
 
         drive_service = None
-        if _use_service_account:
-            print("Используется сервисный аккаунт Google Drive API (без браузерных cookies).")
+        if _sa_for_folders:
+            # Сервисный аккаунт создаёт папки (без квоты); браузер загружает файлы
             drive_service = drive_utils.get_drive_service()
+            if args.dry_run:
+                print("Dry-run режим: Drive API для папок готов, загрузка файлов пропускается.")
+            else:
+                print("Drive: сервисный аккаунт для папок + браузерная сессия для загрузки файлов.")
+                if not check_drive_session(page):
+                    print("=" * 60)
+                    print("ОШИБКА: сессия Google Drive не залогинена (нужна для загрузки файлов).")
+                    if config.IS_CLOUD:
+                        print("Обновите env var OKCRM_STORAGE_STATE в Render.")
+                    else:
+                        print("Войдите на drive.google.com и перезапустите grab_session_from_cdp.py")
+                    print("=" * 60)
+                    browser.close()
+                    return
+                print("Сессия Google Drive в порядке, продолжаю.")
         elif args.dry_run:
             print("Dry-run режим: проверка сессии Google Drive пропускается.")
         else:

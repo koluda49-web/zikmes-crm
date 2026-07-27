@@ -48,12 +48,14 @@ def find_or_create_folder(service, name: str, parent_id: str) -> str:
 def get_or_create_order_folder(service, order_date: str, order_id: str, surname: str) -> str:
     """
     Возвращает id папки вида:
-      <PARENT_DRIVE_FOLDER_ID>/<order_date>/<order_id> <surname>
-    создавая недостающие уровни.
+      <PARENT_DRIVE_FOLDER_ID>/<Месяц>/<дата>/<order_id> <surname>
+    создавая недостающие уровни. Folder creation не требует storage quota.
     """
-    date_folder_id = find_or_create_folder(
-        service, order_date, config.PARENT_DRIVE_FOLDER_ID
-    )
+    from drive_browser import month_name_ru, extract_date_only
+    date_only = extract_date_only(order_date)
+    month = month_name_ru(date_only)
+    month_folder_id = find_or_create_folder(service, month, config.PARENT_DRIVE_FOLDER_ID)
+    date_folder_id = find_or_create_folder(service, date_only, month_folder_id)
     order_folder_name = f"{order_id} {surname}".strip()
     order_folder_id = find_or_create_folder(service, order_folder_name, date_folder_id)
     return order_folder_id
