@@ -270,10 +270,14 @@ def process_order(page, order_id: str, dry_run: bool, drive_service=None) -> Non
         pass
     page.wait_for_timeout(1500)
 
-    edit_error_banner = page.locator(".alert-danger")
+    # :visible — иначе спам ложных предупреждений: в DOM формы постоянно
+    # присутствует скрытый .alert-danger-контейнер (зарезервирован под JS),
+    # и .count() > 0 срабатывал на КАЖДОМ сохранении, даже успешном.
+    edit_error_banner = page.locator(".alert-danger:visible")
     if edit_error_banner.count() > 0:
         banner_text = edit_error_banner.first.inner_text().strip()
-        print(f"[{order_id}] ВНИМАНИЕ: после клика 'Сохранить' на форме виден баннер ошибки: {banner_text}")
+        if banner_text:
+            print(f"[{order_id}] ВНИМАНИЕ: после клика 'Сохранить' на форме виден баннер ошибки: {banner_text}")
 
     print(f"[{order_id}] проверяю статус...")
     page.goto(f"{config.BASE_URL}/order/view/{order_id}", wait_until="commit")

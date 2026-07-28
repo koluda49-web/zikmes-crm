@@ -1138,6 +1138,29 @@ def cmd_call_new(external_driver=None, task_name_prefix=DEBTOR_TASK_NAME_PREFIX,
         # Возвращаем url для использования в полном цикле
         return driver.current_url
 
+    except Exception as e:
+        # Защитная сетка: форма МТС состоит из ~10 последовательных шагов
+        # (название, синтез речи, файл, расписание, дозвон, тумблер, сохранение).
+        # Часть шагов уже подстрахована локально (schedule/attempts/toggle —
+        # они сами ловят исключение и просто предупреждают), но остальные
+        # (создание сообщения, текст, синтез, "Применить", кнопка "Сохранить")
+        # раньше падали без обработки — весь обзвон крашился, браузер закрывался
+        # в finally, и человек терял возможность доделать задание вручную.
+        # Теперь любой необработанный сбой здесь не роняет процесс, а ставит
+        # его на паузу с ОТКРЫТЫМ браузером — человек доделывает шаг вручную.
+        print(f"\n❌ Автоматизация обзвона прервалась на непредвиденном шаге: {e}")
+        if IS_CLOUD:
+            print("☁️  Облако: продолжить некому — задание может быть не завершено.")
+            return None
+        _wait_for_resume(
+            f"Автоматизация прервалась ({e}). Доделайте задание вручную в открытом "
+            "окне МТС (проверьте форму, нажмите «Сохранить») и нажмите «Продолжить» в дашборде."
+        )
+        try:
+            return driver.current_url
+        except Exception:
+            return None
+
     finally:
         if own_driver:
             driver.quit()
@@ -1363,6 +1386,48 @@ def cmd_fetch_report(task_url: str, external_driver=None, merge_fn=None, task_na
             report_path = local_copy
         except Exception:
             pass
+
+    except Exception as e:
+        # Та же защитная сетка, что и в cmd_call_new: непредвиденный сбой
+        # не должен закрывать браузер молча — даём человеку скачать отчёт
+        # вручную, пока окно ещё открыто.
+        print(f"\n❌ Скачивание отчёта прервалось на непредвиденном шаге: {e}")
+        if IS_CLOUD:
+            print("☁️  Облако: продолжить некому — запустите повторно позже.")
+            return
+
+        # Запоминаем состояние Downloads ПРЯМО ПЕРЕД паузой (может отличаться
+        # от before_files выше — сбой мог случиться до того, как тот набор
+        # был снят), чтобы после возобновления найти файл, скачанный вручную.
+        try:
+            before_pause_files = set(os.listdir(DOWNLOADS_DIR)) if os.path.isdir(DOWNLOADS_DIR) else set()
+        except Exception:
+            before_pause_files = set()
+
+        _wait_for_resume(
+            f"Не удалось скачать отчёт автоматически ({e}). Скачайте вручную в открытом "
+            "окне МТС и нажмите «Продолжить» в дашборде — объединение с реестром запустится дальше."
+        )
+
+        report_path = None
+        try:
+            if os.path.isdir(DOWNLOADS_DIR):
+                after_pause_files = set(os.listdir(DOWNLOADS_DIR))
+                diff = after_pause_files - before_pause_files
+                diff = {f for f in diff if not f.endswith(".crdownload") and not f.endswith(".tmp")}
+                if diff:
+                    newest = sorted(diff, key=lambda f: os.path.getmtime(os.path.join(DOWNLOADS_DIR, f)))[-1]
+                    report_path = os.path.join(DOWNLOADS_DIR, newest)
+        except Exception:
+            pass
+
+        if not report_path:
+            print(f"❌ Не нашёл новый файл в {DOWNLOADS_DIR} после паузы — объединение с реестром пропущено.")
+            print(f"   Запусти вручную: python scrape_crm.py debtors_merge ИМЯ_ФАЙЛА")
+            return
+
+        print(f"✅ Отчёт найден после паузы: {report_path}")
+        # report_path используется ниже, после finally, вызовом merge_fn(report_path)
 
     finally:
         if own_driver:

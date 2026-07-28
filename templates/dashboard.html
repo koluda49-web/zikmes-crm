@@ -44,29 +44,6 @@
   .badge.running { color: #f59e0b; border-color: #f59e0b; animation: pulse 1.5s infinite; }
   @keyframes pulse { 0%,100%{opacity:1} 50%{opacity:.6} }
 
-  /* ===== БЫСТРЫЙ ДОСТУП (панель под шапкой) ===== */
-  .quick-bar {
-    display: flex;
-    flex-wrap: wrap;
-    gap: 8px;
-    margin-bottom: 14px;
-  }
-  .quick-bar a {
-    display: inline-flex;
-    align-items: center;
-    gap: 6px;
-    padding: 8px 14px;
-    background: #252b3d;
-    border: 1px solid #2d3550;
-    border-radius: 10px;
-    color: #c8d0e7;
-    text-decoration: none;
-    font-size: 13px;
-    font-weight: 600;
-    transition: border-color .15s, color .15s;
-  }
-  .quick-bar a:hover { border-color: #6366f1; color: #e8eaf6; }
-
   /* ===== ВКЛАДКИ ===== */
   .tabs-nav {
     display: flex;
@@ -323,12 +300,6 @@
   <h1>⚡ Зикмес Mini CRM</h1>
   <div class="badge" id="badge">Готов</div>
 </header>
-
-<!-- ===== БЫСТРЫЙ ДОСТУП ===== -->
-<div class="quick-bar">
-  <a href="{{ cfg.get('CRM_ORDERS_URL', 'https://a.ok-crm.com/order/index') }}" target="_blank">📋 Рассрочки в ЦРМ</a>
-  <a href="https://drive.google.com/drive/folders/1ogcJIQiZJxK9yh3mjZ7mdwVDea9DKn49" target="_blank">📁 Рассрочки на Диске</a>
-</div>
 
 <!-- ===== ВКЛАДКИ ===== -->
 <div class="tabs-nav">
