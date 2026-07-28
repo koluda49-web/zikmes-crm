@@ -354,7 +354,15 @@ def _find_pw_chromium():
     return None, None
 
 
-def create_driver():
+def _build_chrome_options(aggressive_memory_saving: bool):
+    """
+    aggressive_memory_saving=True добавляет --single-process --no-zygote —
+    крупнейший рычаг экономии памяти для контейнеров с жёстким лимитом
+    (рекомендовано для budget VPS/Docker), но это менее распространённая
+    конфигурация и теоретически может не запуститься на некоторых сборках
+    Chromium. create_driver() пробует сначала с ней, при сбое запуска —
+    без неё (см. ниже).
+    """
     options = webdriver.ChromeOptions()
     options.add_argument("--disable-blink-features=AutomationControlled")
     options.add_experimental_option("excludeSwitches", ["enable-automation"])
@@ -369,15 +377,18 @@ def create_driver():
         "download.default_directory": os.path.abspath(DOWNLOADS_DIR),
     }
 
+    chrome_version = None
     if IS_CLOUD:
         options.add_argument("--headless=new")
         options.add_argument("--no-sandbox")
         options.add_argument("--disable-dev-shm-usage")
         options.add_argument("--disable-gpu")
         options.add_argument("--disable-setuid-sandbox")
-        options.add_argument("--window-size=1600,1000")
+        options.add_argument("--window-size=1366,900")
 
-        # Экономия памяти на Render free tier (512 МБ) — иначе OOM и обрыв SSE
+        # Экономия памяти на Render free tier (512 МБ) — МТС VATS тяжелее
+        # обычной CRM (SPA + виджет синтеза речи), сюда падал OOM сразу
+        # после применения синтезированного сообщения.
         options.add_argument("--disable-extensions")
         options.add_argument("--disable-default-apps")
         options.add_argument("--disable-sync")
@@ -387,6 +398,14 @@ def create_driver():
         options.add_argument("--renderer-process-limit=1")
         options.add_argument("--disk-cache-size=0")
         options.add_argument("--media-cache-size=0")
+        options.add_argument("--mute-audio")  # виджет синтеза речи не должен буферизовать звук
+        options.add_argument("--js-flags=--max-old-space-size=256")
+        if aggressive_memory_saving:
+            options.add_argument("--single-process")
+            options.add_argument("--no-zygote")
+
+        # Картинки не нужны для автозаполнения формы — экономит рендер-память
+        prefs["profile.managed_default_content_settings.images"] = 2
 
         # Используем Playwright-установленный Chromium как Chrome-бинарь для Selenium
         chrome_binary, chrome_version = _find_pw_chromium()
@@ -399,20 +418,37 @@ def create_driver():
         profile_dir = os.path.join(os.path.dirname(os.path.abspath(__file__)), "chrome_profile")
         os.makedirs(profile_dir, exist_ok=True)
         options.add_argument(f"--user-data-dir={profile_dir}")
-        chrome_version = None
 
     options.add_experimental_option("prefs", prefs)
+    return options, chrome_version
 
+
+def _build_chrome_service(chrome_version):
     try:
         from webdriver_manager.chrome import ChromeDriverManager
         if chrome_version:
-            service = Service(ChromeDriverManager(driver_version=chrome_version).install())
-        else:
-            service = Service(ChromeDriverManager().install())
+            return Service(ChromeDriverManager(driver_version=chrome_version).install())
+        return Service(ChromeDriverManager().install())
     except ImportError:
-        service = Service()
+        return Service()
 
-    driver = webdriver.Chrome(service=service, options=options)
+
+def create_driver():
+    options, chrome_version = _build_chrome_options(aggressive_memory_saving=True)
+    service = _build_chrome_service(chrome_version)
+
+    try:
+        driver = webdriver.Chrome(service=service, options=options)
+    except Exception as e:
+        if not IS_CLOUD:
+            raise
+        # --single-process --no-zygote иногда несовместим с конкретной сборкой
+        # Chromium — пробуем ещё раз без него, а не падаем сразу.
+        print(f"   [MTS] ⚠ Запуск с --single-process не удался ({e}), пробую без него...")
+        options, chrome_version = _build_chrome_options(aggressive_memory_saving=False)
+        service = _build_chrome_service(chrome_version)
+        driver = webdriver.Chrome(service=service, options=options)
+
     if not IS_CLOUD:
         driver.maximize_window()
     return driver
