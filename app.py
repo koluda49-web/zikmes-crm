@@ -393,11 +393,20 @@ def stream_scan():
     return sse_stream([sys.executable, 'bot.py'], 'Парсер просрочки CRM', extra_env=extra or None)
 
 
+MTS_REQUIRES_LOCAL_BROWSER = {'call_debtors', 'debtors_full_cycle'}
+
+
 @app.route('/stream/mts/<action>')
 @requires_auth
 def stream_mts(action):
     if action not in MTS_LABELS:
         return jsonify({'error': 'unknown action'}), 400
+    if IS_CLOUD and action in MTS_REQUIRES_LOCAL_BROWSER:
+        # Эти действия создают задание в МТС и требуют ручной галочки
+        # «Включить информирование» в открытом окне браузера — на Render
+        # автоматизация работает headless (без экрана), человеку нечего
+        # увидеть и нечего нажать. Запускать это можно только локально.
+        return sse_cloud_error(f'{MTS_LABELS[action]} — нужен видимый браузер')
     cmd = [sys.executable, 'scrape_crm.py', action]
     label = MTS_LABELS[action]
     if action == 'debtors_merge':
