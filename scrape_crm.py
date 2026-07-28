@@ -1050,49 +1050,78 @@ def cmd_call_new(external_driver=None, task_name_prefix=DEBTOR_TASK_NAME_PREFIX,
         time.sleep(0.5)
 
         # 11. "Включить информирование"
-        # Пробуем включить автоматически в обоих режимах; локально после этого
-        # всё равно встаём на паузу, чтобы человек проверил галочку глазами.
-        print("\n🔘 Включаю информирование...")
+        # Пробуем включить автоматически, но НЕ просто кликаем вслепую —
+        # проверяем состояние тумблера ДО и ПОСЛЕ клика. Раньше код считал
+        # успехом сам факт клика (clicked=True), даже если реальное состояние
+        # осталось выключенным (или клик по уже включённому тумблеру его
+        # выключил). В облаке это означало сохранение задания с невыясненным
+        # состоянием информирования, а проверить некому — экрана нет.
+        print("\n🔘 Проверяю тумблер «Включить информирование»...")
         time.sleep(1)
+        informing_confirmed_on = False
         try:
-            # Ищем тумблер/переключатель "Включить информирование"
+            def _toggle_is_on(el):
+                try:
+                    if el.tag_name.lower() == "input":
+                        return el.is_selected()
+                except Exception:
+                    pass
+                try:
+                    aria = (el.get_attribute("aria-checked") or "").lower()
+                    if aria == "true":
+                        return True
+                    if aria == "false":
+                        return False
+                except Exception:
+                    pass
+                try:
+                    cls = (el.get_attribute("class") or "").lower()
+                    if any(k in cls for k in ("active", "checked", "is-on", "-on")):
+                        return True
+                except Exception:
+                    pass
+                return None  # состояние не определить по DOM — не факт, что выключено
+
             toggles = driver.find_elements(By.XPATH,
                 "//*[contains(text(),'информирование')]/following::input[@type='checkbox'][1] | "
                 "//*[contains(text(),'информирование')]/following::*[contains(@class,'toggle') or contains(@class,'switch')][1]"
             )
-            clicked = False
-            for toggle in toggles:
-                try:
-                    if toggle.is_displayed():
-                        driver.execute_script("arguments[0].click();", toggle)
-                        print("   ✅ Тумблер «Включить информирование» нажат")
-                        clicked = True
-                        break
-                except Exception:
-                    continue
-            if not clicked:
-                # Запасной вариант: ищем label с текстом
+            target = next((t for t in toggles if t.is_displayed()), None)
+
+            if target is None:
+                # Запасной вариант: кликабельный label с текстом
                 labels = driver.find_elements(By.XPATH, "//label[contains(.,'информирование')]")
-                for label in labels:
-                    try:
-                        if label.is_displayed():
-                            driver.execute_script("arguments[0].click();", label)
-                            print("   ✅ Label «информирование» нажат")
-                            clicked = True
-                            break
-                    except Exception:
-                        continue
-            if not clicked:
-                print("   ⚠️  Не удалось включить информирование автоматически.")
-                print("   ⚠️  Отметьте галочку вручную на паузе ниже.")
+                target = next((l for l in labels if l.is_displayed()), None)
+
+            if target is None:
+                print("   ⚠️  Тумблер «Включить информирование» не найден на странице.")
+            else:
+                state_before = _toggle_is_on(target)
+                if state_before is True:
+                    print("   ✅ «Включить информирование» уже включено")
+                    informing_confirmed_on = True
+                else:
+                    driver.execute_script("arguments[0].click();", target)
+                    time.sleep(0.5)
+                    state_after = _toggle_is_on(target)
+                    if state_after is True:
+                        print("   ✅ Тумблер включён и подтверждён")
+                        informing_confirmed_on = True
+                    elif state_after is False:
+                        print("   ⚠️  Клик прошёл, но тумблер всё ещё выключен.")
+                    else:
+                        print("   ⚠️  Клик прошёл, но состояние тумблера не определить по DOM.")
         except Exception as e:
-            print(f"   ⚠️  Ошибка при включении информирования: {e}")
+            print(f"   ⚠️  Ошибка при проверке тумблера информирования: {e}")
         time.sleep(0.5)
 
-        # Финальная пауза (только локально — в облаке некому смотреть).
-        # Здесь человек в открытом окне Chrome доводит задание до ума:
-        # ставит галочку «Включить информирование», проверяет остальное,
-        # и жмёт «▶ Продолжить» в дашборде — только после этого сохраняем.
+        # Финальное решение перед сохранением.
+        # Локально: человек в открытом окне Chrome видит форму и может сам
+        # доводить до ума (в т.ч. если авто-проверка не смогла определить
+        # состояние тумблера) — поэтому пауза стоит всегда.
+        # В облаке смотреть некому: если состояние тумблера НЕ подтверждено
+        # включённым, лучше остановиться с понятной ошибкой, чем сохранить
+        # задание в непонятном состоянии.
         if not IS_CLOUD:
             print("\n" + "=" * 55)
             print("  ПРОВЕРЬ НА ЭКРАНЕ БРАУЗЕРА:")
@@ -1100,13 +1129,19 @@ def cmd_call_new(external_driver=None, task_name_prefix=DEBTOR_TASK_NAME_PREFIX,
             print("  - правильное количество номеров?")
             print("  - расписание: Пн-Пт, 07:00-21:00?")
             print("  - максимум попыток: 3, перезвон через: 5 минут?")
-            print("  - включён ли тумблер «Включить информирование»?")
+            print(f"  - включён ли тумблер «Включить информирование»? (авто-проверка: {'✅ да' if informing_confirmed_on else '⚠️ не подтверждено'})")
             print("=" * 55)
             _wait_for_resume(
                 "Отметьте «Включить информирование» в браузере МТС и нажмите «Продолжить» в дашборде"
             )
+        elif informing_confirmed_on:
+            print("☁️  Информирование подтверждено включённым — сохраняю автоматически...")
         else:
-            print("☁️  Облачный режим: сохраняю задание автоматически...")
+            print("\n❌ Не удалось подтвердить, что «Включить информирование» включено.")
+            print("❌ Прерываю ДО сохранения — задание НЕ создано в МТС.")
+            print("   Запустите обзвон локально (start_dashboard.bat) один раз, чтобы")
+            print("   проверить форму глазами, либо включите информирование в МТС вручную.")
+            return None
 
         # 12. Сохраняем
         print("💾 Сохраняю задание (это запускает обзвон)...")

@@ -339,26 +339,27 @@
       <div class="card-title">📞 Голосовой обзвон должников (МТС)</div>
       <div class="card-desc">Автоматические голосовые звонки через МТС VATS по списку должников из реестра</div>
       {% if cfg.IS_CLOUD %}
-      <div class="card-desc" style="color:#f59e0b;border-top:1px solid #2d3550;padding-top:8px;margin-top:4px">
-        ⚠️ «Запустить обзвон» и «Полный цикл» создают задание в МТС и требуют вручную
-        поставить галочку «Включить информирование» в открытом окне браузера — на
-        сервере (Render) окна нет и увидеть его нельзя. Эти два действия доступны
-        только при запуске <code style="background:#0f1420;padding:1px 5px;border-radius:4px;font-size:11px">start_dashboard.bat</code>
-        на своём компьютере (localhost:5000).
+      <div class="card-desc" style="color:#6b7280;border-top:1px solid #2d3550;padding-top:8px;margin-top:4px">
+        ℹ️ В облаке галочку «Включить информирование» некому проверить глазами —
+        бот сам сверяет состояние тумблера до и после клика. Если не может
+        подтвердить, что информирование включено, задание НЕ сохраняется и
+        выводится ошибка — в этом случае запусти обзвон один раз локально
+        (<code style="background:#0f1420;padding:1px 5px;border-radius:4px;font-size:11px">start_dashboard.bat</code>),
+        чтобы проверить форму глазами.
       </div>
       {% endif %}
       <div class="mts-grid">
         <button class="btn btn-purple" onclick="runTask('/stream/mts/debtors_export')">
           1. Выгрузить номера
         </button>
-        <button class="btn btn-blue" {% if cfg.IS_CLOUD %}disabled title="Нужен видимый браузер — запусти локально (start_dashboard.bat)"{% else %}onclick="runTask('/stream/mts/call_debtors')"{% endif %}>
-          2. Запустить обзвон{% if cfg.IS_CLOUD %} 🔒{% endif %}
+        <button class="btn btn-blue" onclick="runTask('/stream/mts/call_debtors')">
+          2. Запустить обзвон
         </button>
         <button class="btn btn-blue" onclick="runTask('/stream/mts/fetch_debtors_report')">
           3. Скачать отчёт
         </button>
-        <button class="btn btn-green" {% if cfg.IS_CLOUD %}disabled title="Нужен видимый браузер — запусти локально (start_dashboard.bat)"{% else %}onclick="runTask('/stream/mts/debtors_full_cycle')"{% endif %}>
-          ⚡ Полный цикл (1+2+3){% if cfg.IS_CLOUD %} 🔒{% endif %}
+        <button class="btn btn-green" onclick="runTask('/stream/mts/debtors_full_cycle')">
+          ⚡ Полный цикл (1+2+3)
         </button>
       </div>
       <div class="merge-row">
